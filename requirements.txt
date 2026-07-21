@@ -1,0 +1,16 @@
+langgraph 
+langchain 
+langchain-groq 
+langsmith 
+pandas 
+numpy 
+scikit-learn 
+plotly 
+seaborn 
+scipy 
+reportlab 
+loguru 
+rich
+tabulate
+dotenv
+polar
