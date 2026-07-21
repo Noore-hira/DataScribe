@@ -175,13 +175,13 @@ def reporter_node(state: GraphState):
 
 def route_after_execution(state: GraphState):
     if state["has_error"] and state["retry_count"] < 3:
-        print(f"⚠️ Code execution failed. Retrying... (Attempt {state['retry_count'] + 1})")
+        print(f"Code execution failed. Retrying... (Attempt {state['retry_count'] + 1})")
         return "programmer"
     elif state["has_error"]:
-        print("❌ Max retries hit. Proceeding to report with error.")
+        print("Max retries hit. Proceeding to report with error.")
         return "reporter"
     else:
-        print("✅ Code executed successfully.")
+        print("Code executed successfully.")
         return "reporter"
 
 workflow = StateGraph(GraphState)
@@ -238,11 +238,11 @@ if __name__ == "__main__":
         "has_error": False
     }
 
-    print("🚀 Starting Agentic Workflow (Visualization focus)...")
+    print("Starting agentic workflow (visualization focus)...")
     result = app.invoke(initial_state)
     
     print("\n" + "="*40)
-    print("📊 FINAL REPORT")
+    print("FINAL REPORT")
     print("="*40)
     # Use regex to remove everything inside <think> tags (including the tags themselves)
     clean_report = re.sub(r'<think>.*?</think>', '', result["final_report"], flags=re.DOTALL).strip()
@@ -252,6 +252,6 @@ if __name__ == "__main__":
     # CHECK FOR CHART OUTPUT
     chart_path = "agent_chart.png"
     if os.path.exists(chart_path):
-        print(f"\n✅ Beautiful chart saved successfully to directory: {chart_path}")
+        print(f"\nChart saved successfully to directory: {chart_path}")
     else:
-        print("\n❌ Agent failed to generate a chart.")
+        print("\nAgent failed to generate a chart.")

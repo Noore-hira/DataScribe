@@ -7,6 +7,7 @@ programmer_instructions = (
     "CRITICAL RULES:\n"
     "1. You have NO tools. Do not attempt to call any tools.\n"
     "2. The dataset is already loaded in memory as `global_df`.\n"
+    "2a. NEVER use import statements or read files. `pd`, `pl`, `sns`, and `plt` are already available.\n"
     "3. MANDATORY CLEANING STEP: Before performing any analysis or calculations, your code MUST automatically clean the data first (e.g., handle missing values by filling numerical columns with the median and categorical columns with 'Unknown', and parse dates correctly)[cite: 1].\n"
     "4. You MUST use `print()` statements to output your statistical calculations so they appear in stdout.\n"
     "5. Wrap your final Python code strictly inside ```python ... ``` blocks."
@@ -14,15 +15,18 @@ programmer_instructions = (
 
 def programmer_node(state: GraphState):
     """Data Scientist node writes clean data analysis code with built-in cleaning."""
-    print("💻 Data Scientist is writing Pandas analysis and cleaning code...")
+    print("Data Scientist is writing Pandas analysis and cleaning code...")
     
     error_context = f"\n\nPREVIOUS CODE FAILED:\n{state['execution_output']}" if state.get("has_error") else ""
     prompt = f"Plan: {state['plan']}\nSchema:\n{state['df_schema']}{error_context}"
     
-    response = llm_for_pg.invoke([
-        {"role": "system", "content": programmer_instructions},
-        {"role": "user", "content": prompt}
-    ])
+    try:
+        response = llm_for_pg.invoke([
+            {"role": "system", "content": programmer_instructions},
+            {"role": "user", "content": prompt}
+        ])
+    except Exception as exc:
+        return {"fatal_error": f"The analysis model is unavailable: {exc.__class__.__name__}. Please retry later."}
     
     raw_output = response.content
     code_match = re.search(r"```python\n(.*?)\n```", raw_output, re.DOTALL)

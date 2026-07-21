@@ -1,20 +1,27 @@
-from typing import Annotated, Any
-from pydantic import BaseModel
-
+from typing import Annotated
 from langgraph.graph.message import add_messages
-from typing_extensions import TypedDict, Optional
+from typing_extensions import TypedDict, NotRequired
 
-class GraphState(TypedDict):
+
+class InputState(TypedDict):
+    """The only value an end user needs to provide in LangGraph Studio."""
+
+    user_query: str
+
+
+class GraphState(TypedDict, total=False):
     messages: Annotated[list, add_messages]
     user_query: str
-    df_schema: Optional[str]
-    memory_usage_mb: Optional[float]
-    plan: Optional[str]
-    current_code: Optional[str]
-    execution_output: Optional[str]
-    has_error: Optional[bool]
-    retry_count: Optional[int]
-    revision_count: Optional[int]
-    supervisor_decision: Optional[str]
-    charts_completed: Optional[bool]
-    final_report: Optional[str]  # Final generated markdown report[cite: 7]
+    df_schema: NotRequired[str]
+    memory_usage_mb: NotRequired[float]
+    plan: NotRequired[str]
+    current_code: NotRequired[str]
+    execution_output: NotRequired[str]
+    has_error: NotRequired[bool]
+    retry_count: NotRequired[int]
+    revision_count: NotRequired[int]
+    supervisor_decision: NotRequired[str]
+    charts_completed: NotRequired[bool]
+    chart_files: NotRequired[list[str]]
+    fatal_error: NotRequired[str]
+    final_report: NotRequired[str]

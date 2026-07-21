@@ -1,9 +1,8 @@
 import io
-import os
 from dotenv import load_dotenv
 import pandas as pd
-from src.graph.state import GraphState
-from data_frame import global_df
+from src.graph.state import GraphState, InputState
+from data_frame import load_dataframe
 from langgraph.graph import StateGraph, END
 from src.agents.executor_node import executor_node
 from src.agents.supervisor_node import supervisor_node
@@ -12,13 +11,8 @@ from src.agents.planner_node import planner_node
 from src.agents.designer_node import designer_node
 from src.agents.reporter_node import reporter_node
 from src.agents.programmer_node import programmer_node
-from langgraph.checkpoint.memory import MemorySaver
 
 load_dotenv()
-os.environ["LANGSMITH_API_KEY"]=os.getenv("LANGSMITH_API_KEY")
-os.environ["LANGSMITH_TRACING_V2"]=os.getenv("LANGSMITH_TRACING_V2")
-os.environ["LANGSMITH_PROJECT"]=os.getenv("LANGSMITH_PROJECT")
-memory = MemorySaver()
 
 def route_from_supervisor(state: GraphState):
     decision = state["supervisor_decision"]
@@ -31,9 +25,12 @@ def route_from_supervisor(state: GraphState):
 
 def route_from_critic(state: GraphState):
     if state["has_error"] and state["retry_count"] < 3: return "programmer"
-    return "reporter"
+    # Return through the supervisor so it can schedule visualizations when the
+    # user requested them, rather than sending every successful analysis
+    # directly to the reporter.
+    return "supervisor"
 
-workflow = StateGraph(GraphState)
+workflow = StateGraph(GraphState, input_schema=InputState)
 
 # Add all factory nodes
 workflow.add_node("supervisor", supervisor_node)
@@ -71,23 +68,25 @@ workflow.add_edge("executor", "critic")
 workflow.add_conditional_edges(
     "critic",
     route_from_critic,
-    {"programmer": "programmer", "reporter": "reporter"}
+    {"programmer": "programmer", "supervisor": "supervisor"}
 )
 
-if os.environ.get("LANGSMITH_API_KEY"):
-    app = workflow.compile()
-else:
-    app = workflow.compile(checkpointer=memory)
-
-png_bytes = app.get_graph().draw_mermaid_png()
-with open("workflow_diagram.png", "wb") as f:
-    f.write(png_bytes)
-print("📸 Workflow diagram saved as 'workflow_diagram.png'")
+# Studio manages persistence and checkpointers for graphs loaded through the
+# LangGraph API. Keep this module import-safe and do not supply one here.
+app = workflow.compile()
 
 user_thread_id = "user_session_123"
 config = {"configurable": {"thread_id": user_thread_id}}
 
 if __name__ == "__main__":
+    # This is a local convenience only; it must not execute during a Studio
+    # graph import.
+    png_bytes = app.get_graph().draw_mermaid_png()
+    with open("workflow_diagram.png", "wb") as f:
+        f.write(png_bytes)
+    print("Workflow diagram saved as 'workflow_diagram.png'")
+
+    global_df = load_dataframe()
     mem_usage_bytes = global_df.memory_usage(deep=True).sum()
     mem_usage_mb = float(mem_usage_bytes / (1024 ** 2))
     
@@ -105,11 +104,11 @@ if __name__ == "__main__":
         "final_report": None
     }
 
-    print("🚀 Starting Production Agentic Workflow...\n")
+    print("Starting production agentic workflow...\n")
     result = app.invoke(initial_state, config=config)
     
     print("\n" + "="*40)
-    print("✅ FINAL APPROVED REPORT")
+    print("FINAL APPROVED REPORT")
     print("="*40)
 
     if result.get("final_report"):

@@ -11,7 +11,7 @@ def profiler_node(state: GraphState):
     Generates a lightweight profiling report without external profiling libraries.
     """
 
-    print("🔍 Generating dataset profile...")
+    print("Generating dataset profile...")
 
     try:
         df = global_df

@@ -9,7 +9,7 @@ def clean_dataframe_tool() -> str:
     """
     global global_df
     
-    print("🛠️ [TOOL EXECUTION] Imputing missing values in dataframe...")
+    print("[TOOL EXECUTION] Imputing missing values in dataframe...")
     
     # REMOVED: global_df.columns = global_df.columns.str.lower()...
     # Do not mutate column names; it causes KeyErrors in the generated code!
