@@ -8,9 +8,6 @@ scikit-learn
 plotly 
 seaborn 
 scipy 
-reportlab 
-loguru 
-rich
 tabulate
 dotenv
 polar

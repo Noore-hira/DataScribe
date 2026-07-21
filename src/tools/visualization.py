@@ -1,3 +1,4 @@
+import os
 import re
 import matplotlib
 import matplotlib.pyplot as plt
@@ -7,14 +8,10 @@ import plotly.graph_objects as go
 from langchain_core.tools import tool
 from data_frame import global_df
 from langchain_core.messages import SystemMessage, HumanMessage
-
-# Force matplotlib to not open pop-up windows on the server
-matplotlib.use('Agg')
-# Force Matplotlib and Seaborn to use a black background by default
-plt.style.use('dark_background')
-
-# Import your LLM from config
 from src.config import llm_for_pg
+
+matplotlib.use('Agg')
+plt.style.use('dark_background')
 
 @tool
 def create_visualization_tool(plot_description: str) -> str:
@@ -24,41 +21,53 @@ def create_visualization_tool(plot_description: str) -> str:
     colors, and the title.
     """
     global global_df
-    print(f"🎨 [VISUALIZER] Generating plot: {plot_description}...")
+    print(f"🎨 [VISUALIZER] Generating interactive Plotly/Seaborn plots: {plot_description}...")
 
-    # 1. Prompt the specific Visualizer LLM with strict dark mode rules
+    charts_dir = "charts"
+    os.makedirs(charts_dir, exist_ok=True)
+
     sys_prompt = (
-        "You are an expert Data Visualizer. Write Python code to generate beautiful, "
-        "publication-ready plots based on the user's request. "
-        "CRITICAL RULES: "
-        "1. The data is available in a pandas DataFrame named `global_df`. "
-        "2. Use `seaborn`, `matplotlib.pyplot`, or `plotly.express`. "
-        "3. THE BACKGROUND MUST BE BLACK. "
-        "   - If using Plotly, add `template='plotly_dark'` and `fig.update_layout(paper_bgcolor='black', plot_bgcolor='black')`. "
-        "   - If using Matplotlib/Seaborn, dark_background is active. "
-        "4. CREATE UNIQUE FILENAMES: Save each plot with a descriptive filename based on what it shows "
-        "   (e.g., `plt.savefig('sales_by_region_bar.png', bbox_inches='tight', facecolor='black')`). DO NOT use `output_plot.png`. DO NOT use `plt.show()`. "
-        "5. If using plotly, save it dynamically as well (e.g., `fig.write_html('salary_distribution.html')`). DO NOT use `fig.show()`. "
-        "6. IF THE USER ASKS FOR MULTIPLE PLOTS, write the code to generate and save ALL of them using distinct filenames. "
-        "7. If the user asks for charts, YOU MUST CALL the `create_visualization_tool` EXACTLY ONCE.\n"
-        "8. If multiple charts are requested, COMBINE them into a single string for that ONE tool call."
-        "9. OUTPUT ONLY PYTHON CODE inside ```python ... ``` blocks."
+        "You are an expert Data Visualizer specializing in Plotly Express, Plotly Graph Objects, and Seaborn. "
+        "Write clean, error-free Python code to generate gorgeous, interactive plots based on the user's request. "
+        "CRITICAL ABSOLUTE RULES: "
+        "1. The data is ALREADY loaded in memory as a pandas DataFrame named `global_df`. DO NOT read files. "
+        "2. PREFER PLOTLY (`px` or `go`) for interactive charts (donuts, scatter, 3D, bar, animated plots). "
+        "3. DARK THEME ENFORCEMENT: "
+        "   - For Plotly, always add `template='plotly_dark'` and `fig.update_layout(paper_bgcolor='black', plot_bgcolor='black')`. "
+        "   - For colorscales, use valid built-in strings like 'Viridis', 'Plasma', 'Blues', 'Greens', 'Turbo'. NEVER pass custom tuples or invalid strings like 'Plotly' to colorways. "
+        "4. SAVING FILES: "
+        "   - Save Plotly figures as interactive HTML files: `fig.write_html('charts/filename.html')`. "
+        "   - Save Matplotlib/Seaborn as PNGs: `plt.savefig('charts/filename.png', bbox_inches='tight', facecolor='black')`. "
+        "   - DO NOT use `plt.show()` or `fig.show()`. "
+        "5. IF MULTIPLE PLOTS ARE REQUESTED, write the code to generate and save ALL of them in this single script. "
+        "6. OUTPUT ONLY PYTHON CODE inside ```python ... ``` blocks."
     )
     
-    # We pass the schema so the visualizer knows exactly what columns exist
-    user_prompt = f"Data Schema:\n{global_df.dtypes}\n\nPlot Request: {plot_description}"
+    user_prompt = f"Data Columns Available: {list(global_df.columns)}\nData Schema:\n{global_df.dtypes}\n\nPlot Request: {plot_description}"
     
     response = llm_for_pg.invoke([
         SystemMessage(content=sys_prompt),
         HumanMessage(content=user_prompt)
     ])
     
-    # 2. Extract the Python code
     raw_output = response.content
     code_match = re.search(r"```python\n(.*?)\n```", raw_output, re.DOTALL)
     code = code_match.group(1) if code_match else raw_output
     
-    # 3. Execute in an isolated sandbox
+    # SAFETY INTERCEPT: Scrub accidental file reads
+    if "read_csv" in code or "pd.read" in code:
+        print("⚠️ [VISUALIZER WARNING] LLM attempted to read a file. Scrubbing...")
+        code_lines = [line for line in code.split("\n") if "read_csv" not in line and "pd.read" not in line]
+        code = "\n".join(code_lines)
+
+    # SMART PATH SANITIZER: Ensure files are saved in 'charts/' without duplication
+    def sanitize_path(match):
+        full_call = match.group(0)
+        filename = os.path.basename(match.group(2))
+        return full_call.replace(match.group(2), f"charts/{filename}")
+
+    code = re.sub(r"(plt\.savefig|fig\.write_html)\s*\(\s*(['\"])(.*?)\1", sanitize_path, code)
+
     exec_globals = {
         "global_df": global_df,
         "plt": plt,
@@ -69,17 +78,11 @@ def create_visualization_tool(plot_description: str) -> str:
     
     try:
         exec(code, exec_globals)
-        msg = "SUCCESS: The plots were successfully saved. Proceed to Step 2."
-        print(f"✅ [VISUALIZER SUCCESS] Plots saved!")
+        saved_files = os.listdir(charts_dir)
+        msg = f"SUCCESS: Interactive plots successfully saved in 'charts/'. Generated files: {', '.join(saved_files)}"
+        print(f"✅ [VISUALIZER SUCCESS] Plots saved in 'charts/' -> {saved_files}")
         return msg
     except Exception as e:
         error_msg = str(e)
-        # 1. Print the error to your terminal so you can debug it
         print(f"❌ [VISUALIZER CRASHED] The generated code failed: {error_msg}")
-        
-        # 2. Force the Programmer to STOP retrying
-        return (
-            f"FAILED to generate plot due to this code error: {error_msg}. "
-            "CRITICAL INSTRUCTION: DO NOT CALL THIS TOOL AGAIN. Accept the failure "
-            "and immediately proceed to Step 2 to write the Pandas analysis code."
-        )
+        return f"FAILED to generate plot due to code error: {error_msg}."

@@ -1,0 +1,7 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "datascribe_graph": "./main_graph.py:app"
+  },
+  "env": ".env"
+}
