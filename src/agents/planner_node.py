@@ -1,15 +1,18 @@
 import re
-
+from src.logs.logger import logger
 from src.config import llm_for_pg
 from src.graph.state import GraphState
+from src.graph.state_utils import require_state
 
 def planner_node(state: GraphState):
     """The Planner reads the user query and schema, writing a text roadmap."""
-    print("Planner is creating a step-by-step roadmap...")
+    logger.info("Planner started")
     
+    user_query = require_state(state, "user_query")
+    schema = require_state(state, "df_schema")
     prompt = (
-        f"User Query: {state['user_query']}\n"
-        f"Dataset Schema:\n{state['df_schema']}\n\n"
+        f"User Query: {user_query}\n"
+        f"Dataset Schema:\n{schema}\n\n"
         "Write a concise, high-level execution plan to satisfy this query. "
         "Specify the required analysis, charts, and statistical calculations.\n\n"
         "PLANNER BOUNDARY: Return a roadmap only. Do not write Python, pseudocode, "

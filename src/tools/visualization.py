@@ -8,6 +8,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from langchain_core.tools import tool
 from data_frame import load_dataframe
+from src.logs.logger import logger
 from langchain_core.messages import SystemMessage, HumanMessage
 from src.config import llm_for_pg
 from src.tools.safe_execution import SAFE_BUILTINS, normalize_visualization_artifacts, validate_analysis_code
@@ -24,7 +25,9 @@ def create_visualization_tool(plot_description: str, run_id: str) -> str:
     """
     print(f"[VISUALIZER] Generating interactive Plotly/Seaborn plots: {plot_description}...")
 
-    charts_dir = os.path.join("charts", run_id)
+    # Check if LangGraph provides an artifact directory, otherwise fallback to charts/{run_id}
+    base_artifact_dir = os.environ.get("LANGGRAPH_ARTIFACTS_DIR", "charts")
+    charts_dir = os.path.join(base_artifact_dir, run_id) if run_id else base_artifact_dir
     os.makedirs(charts_dir, exist_ok=True)
     global_df = load_dataframe()
 

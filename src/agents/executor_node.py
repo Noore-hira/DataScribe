@@ -7,15 +7,17 @@ import polars as pl
 import matplotlib.pyplot as plt
 import seaborn as sns
 from data_frame import load_dataframe
+from src.logs.logger import logger
+from src.graph.state_utils import require_state
 from src.tools.safe_execution import SAFE_BUILTINS, validate_analysis_code
 
 def executor_node(state: GraphState):
     """Executes the code securely with injected tools and persists data modifications."""
-    print("Executor is running the code...")
+    logger.info("Executor started")
     if state.get("fatal_error"):
         return {"has_error": True, "execution_output": state["fatal_error"]}
 
-    code = state.get("current_code", "")
+    code = require_state(state, "current_code")
     # Imports are unnecessary because the permitted analysis libraries are
     # injected below. Remove a model's redundant import lines before applying
     # the AST safety policy.

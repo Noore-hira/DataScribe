@@ -1,12 +1,14 @@
 import os
 from src.config import llm
 from src.graph.state import GraphState
+from src.logs.logger import logger
 from langchain_core.messages import SystemMessage, HumanMessage
+from src.graph.state_utils import require_state
 
 def reporter_node(state: GraphState):
     """Compile the final report with only artifacts created by this graph run."""
-    print("Reporter is formatting the final output and checking for charts...")
-
+    logger.info("Reporter is formatting the final output and checking for charts...")
+    
     if state.get("fatal_error"):
         return {"final_report": state["fatal_error"]}
     
@@ -36,9 +38,9 @@ def reporter_node(state: GraphState):
         )
     
     user_content = (
-        f"User Query: {state['user_query']}\n\n"
+        f"User Query: {require_state(state, "user_query")}\n\n"
         f"Analysis & Execution Output:\n{state.get('execution_output', '')}\n\n"
-        f"Dataset Schema:\n{state['df_schema']}"
+        f"Dataset Schema:\n{require_state(state, "df_schema")}"
     )
     
     try:

@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict, NotRequired
 
@@ -15,6 +15,8 @@ class GraphState(TypedDict, total=False):
     df_schema: NotRequired[str]
     memory_usage_mb: NotRequired[float]
     plan: NotRequired[str]
+    critic_verdict: NotRequired[Literal["pass", "fail"]]
+    critic_feedback: NotRequired[str]
     current_code: NotRequired[str]
     execution_output: NotRequired[str]
     has_error: NotRequired[bool]

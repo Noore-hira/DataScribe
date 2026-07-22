@@ -1,9 +1,11 @@
 import io
 from dotenv import load_dotenv
 import pandas as pd
+from src.logs.logger import logger
 from src.graph.state import GraphState, InputState
 from data_frame import load_dataframe
 from langgraph.graph import StateGraph, END
+from src.graph.state_utils import require_state
 from src.agents.executor_node import executor_node
 from src.agents.supervisor_node import supervisor_node
 from src.agents.critic_node import critic_node
@@ -11,28 +13,52 @@ from src.agents.planner_node import planner_node
 from src.agents.designer_node import designer_node
 from src.agents.reporter_node import reporter_node
 from src.agents.programmer_node import programmer_node
+from src.agents.initialize_node import initialize_node
 
 load_dotenv()
 
 def route_from_supervisor(state: GraphState):
-    decision = state["supervisor_decision"]
-    if decision == "planner": return "planner"
-    elif decision == "programmer": return "programmer"
-    elif decision == "designer": return "designer"
-    elif decision == "reporter": return "reporter"
-    elif decision in ["rework"]: return "programmer"
-    elif decision == "end": return END
+    """Route according to the supervisor's decision."""
+
+    decision = require_state(state, "supervisor_decision")
+
+    logger.info("Supervisor selected '%s'.", decision)
+
+    supervisor_routes = {
+        "planner": "planner",
+        "programmer": "programmer",
+        "designer": "designer",
+        "reporter": "reporter",
+        "end": END,
+    }
+
+    if decision not in supervisor_routes:
+        raise ValueError(f"Unknown supervisor decision: {decision}")
+
+    return supervisor_routes[decision]
+
 
 def route_from_critic(state: GraphState):
-    if state["has_error"] and state["retry_count"] < 3: return "programmer"
-    # Return through the supervisor so it can schedule visualizations when the
-    # user requested them, rather than sending every successful analysis
-    # directly to the reporter.
-    return "supervisor"
+    """Route based on the critic's review."""
+
+    verdict = require_state(state, "critic_verdict")
+
+    logger.info("Critic verdict: %s", verdict.upper())
+
+    critic_routes = {
+        "pass": "supervisor",
+        "fail": "programmer",
+    }
+
+    if verdict not in critic_routes:
+        raise ValueError(f"Unknown critic verdict: {verdict}")
+
+    return critic_routes[verdict]
 
 workflow = StateGraph(GraphState, input_schema=InputState)
 
 # Add all factory nodes
+workflow.add_node("initialize", initialize_node)
 workflow.add_node("supervisor", supervisor_node)
 workflow.add_node("planner", planner_node)
 workflow.add_node("designer", designer_node)
@@ -41,7 +67,8 @@ workflow.add_node("executor", executor_node)
 workflow.add_node("critic", critic_node)
 workflow.add_node("reporter", reporter_node)
 
-workflow.set_entry_point("supervisor")
+workflow.set_entry_point("initialize")
+workflow.add_edge("initialize", "supervisor")
 
 # Supervisor conditional routing supporting the complete pipeline sequence
 workflow.add_conditional_edges(
@@ -68,7 +95,10 @@ workflow.add_edge("executor", "critic")
 workflow.add_conditional_edges(
     "critic",
     route_from_critic,
-    {"programmer": "programmer", "supervisor": "supervisor"}
+    {
+        "programmer": "programmer",
+        "supervisor": "supervisor",
+    },
 )
 
 # Studio manages persistence and checkpointers for graphs loaded through the
@@ -86,22 +116,11 @@ if __name__ == "__main__":
         f.write(png_bytes)
     print("Workflow diagram saved as 'workflow_diagram.png'")
 
-    global_df = load_dataframe()
-    mem_usage_bytes = global_df.memory_usage(deep=True).sum()
-    mem_usage_mb = float(mem_usage_bytes / (1024 ** 2))
-    
-    buffer = io.StringIO()
-    global_df.info(buf=buffer)
-    schema_str = f"{buffer.getvalue()}\n\nNull Count:\n{global_df.isnull().sum()}"
-
     initial_state = {
-        "user_query": "tell me about the dataset and give me insights from it and also create donut plot and bar chart",
-        "df_schema": schema_str,
-        "memory_usage_mb": mem_usage_mb,
-        "retry_count": 0,
-        "revision_count": 0,
-        "has_error": False,
-        "final_report": None
+        "user_query":
+            "tell me about the dataset and "
+            "give me insights from it and "
+            "also create donut plot and bar chart"
     }
 
     print("Starting production agentic workflow...\n")
