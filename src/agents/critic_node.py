@@ -3,152 +3,151 @@ from typing import Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from data_frame import load_dataframe
 from src.config import llm
 from src.graph.state import GraphState
-from src.graph.state_utils import get_state, require_state
 from src.logs.logger import logger
 
 
 class CriticVerdict(BaseModel):
-    verdict: Literal["pass", "fail"] = Field(
-        description="Whether the programmer's solution satisfies the requirements."
+    verdict: Literal["pass", "fail", "abort"] = Field(
+        description="Whether another programmer iteration is required."
     )
-    critique: str = Field(
-        description="Concrete feedback for the programmer."
+
+    feedback: str = Field(
+        description="Short actionable feedback for the programmer."
     )
 
 
 SYSTEM_PROMPT = """
-You are a Senior Python Data Science Code Reviewer.
+You are the QA Reviewer of DataScribe.
 
-Your ONLY responsibility is to review the PROGRAMMER agent's work.
+Your ONLY responsibility is deciding whether another Programmer iteration is required.
 
-Evaluate ALL of the following:
+Review:
 
-1. Does the generated code satisfy the execution plan?
-2. Does it answer the user's request?
-3. Are all requested analyses and statistical calculations included?
-4. Is the existing dataframe `global_df` used correctly?
-5. Does the code avoid loading the dataset again?
-6. Does it avoid unnecessary modification of the dataframe?
-7. Is there redundant, inefficient, or unnecessary code?
-8. If execution failed, identify the exact reason and explain how the programmer should fix it.
+- User request
+- Execution plan
+- Execution output
+- Runtime errors
+- Generated charts
 
-Guidelines:
+Return PASS when:
 
-- Ignore formatting and markdown.
-- Ignore visualization quality.
-- Focus ONLY on the generated analysis code.
-- Return FAIL if execution failed.
-- Return FAIL if requested analyses are missing.
-- Return PASS only if everything is complete.
+- The requested analysis is complete.
+- The requested visualizations exist.
+- There are no execution errors.
+- The user's request has been satisfied.
 
-Your feedback should be specific and actionable.
+Return FAIL only when:
+
+- Execution failed.
+- Required analysis is missing.
+- Required charts are missing.
+- The user's request was not answered.
+
+Do NOT fail because:
+
+- Better charts are possible.
+- More statistics could be added.
+- Code style could be improve.
+- Another implementation exists.
+
+If returning FAIL, explain exactly what the Programmer should fix.
 """
 
 
-def critic_node(state: GraphState):
-    """Review the programmer's solution after execution."""
+def critic_node(state: GraphState) -> GraphState:
 
-    logger.info("Critic node started.")
+    logger.info("Critic started.")
 
-    # Required state
-    user_query = require_state(state, "user_query")
-    schema = require_state(state, "df_schema")
-    plan = require_state(state, "plan")
-    code = require_state(state, "current_code")
+    retry_count = state.get("retry_count", 0)
+    max_retries = state.get("max_retries", 2)
 
-    # Optional state
-    has_error = get_state(state, "has_error", False)
-    retry_count = get_state(state, "retry_count", 0)
-    execution_output = get_state(state, "execution_output", "")
+    # --------------------------------------------------
+    # Stop retry loop
+    # --------------------------------------------------
 
-    # Deterministic fallback
-    if has_error and retry_count >= 3:
-        logger.warning(
-            "Maximum retries reached. Falling back to dataset profiling."
-        )
+    if retry_count >= max_retries:
 
-        dataframe = load_dataframe()
-
-        message = (
-            "The programmer could not produce executable analysis after "
-            "three attempts.\n\n"
-            f"Rows: {len(dataframe)}\n"
-            f"Columns: {', '.join(dataframe.columns)}\n\n"
-            "Missing Values:\n"
-            f"{dataframe.isnull().sum().to_string()}\n\n"
-            "Summary Statistics:\n"
-            f"{dataframe.describe(include='all').to_string()}"
-        )
+        logger.warning("Maximum retries reached.")
 
         return {
-            "has_error": False,
-            "execution_output": message,
-            "critic_verdict": "fail",
-            "critic_feedback": "Maximum retries reached.",
+            "critic_verdict": "abort",
+            "critic_feedback": "Maximum retry limit reached.",
         }
 
-    review_input = f"""
-User Query:
-{user_query}
+    # --------------------------------------------------
+    # Runtime execution failed
+    # --------------------------------------------------
 
-Dataset Schema:
-{schema}
+    if state.get("execution_status") == "failed":
 
-Execution Plan:
-{plan}
-
-Generated Code:
-{code}
-
-Execution Output:
-{execution_output}
-
-Execution Failed:
-{has_error}
-"""
-
-    try:
-        reviewer = llm.with_structured_output(CriticVerdict)
-
-        verdict: CriticVerdict = reviewer.invoke(
-            [
-                SystemMessage(content=SYSTEM_PROMPT),
-                HumanMessage(content=review_input),
-            ]
-        )
-
-    except Exception:
-        logger.exception("Critic LLM invocation failed.")
+        logger.warning("Execution failed.")
 
         return {
-            "has_error": True,
             "critic_verdict": "fail",
-            "critic_feedback": (
-                "The reviewer model was unavailable. "
-                "Please retry."
+            "critic_feedback": state.get(
+                "execution_error",
+                "Execution failed.",
             ),
             "retry_count": retry_count + 1,
         }
 
+    # --------------------------------------------------
+    # LLM validation
+    # --------------------------------------------------
+
+    review = f"""
+User Request
+
+{state.get("user_query","")}
+
+
+Execution Plan
+
+{state.get("plan","")}
+
+
+Generated Code
+
+{state.get("generated_code","")}
+
+
+Execution Output
+
+{state.get("execution_output","")}
+
+
+Execution Error
+
+{state.get("execution_error","")}
+
+
+Generated Charts
+
+{state.get("chart_files",[])}
+"""
+
+    reviewer = llm.with_structured_output(CriticVerdict)
+
+    verdict = reviewer.invoke(
+        [
+            SystemMessage(content=SYSTEM_PROMPT),
+            HumanMessage(content=review),
+        ]
+    )
+
     logger.info("Critic verdict: %s", verdict.verdict.upper())
 
     if verdict.verdict == "fail":
-        logger.warning("Programmer revision requested.")
 
         return {
-            "has_error": True,
-            "critic_verdict": verdict.verdict,
-            "critic_feedback": verdict.critique,
+            "critic_verdict": "fail",
+            "critic_feedback": verdict.feedback,
             "retry_count": retry_count + 1,
         }
 
-    logger.info("Programmer solution approved.")
-
     return {
-        "has_error": False,
-        "critic_verdict": verdict.verdict,
-        "critic_feedback": verdict.critique,
+        "critic_verdict": "pass",
+        "critic_feedback": verdict.feedback,
     }

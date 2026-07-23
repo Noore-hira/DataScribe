@@ -1,90 +1,214 @@
 import os
-import re
-import json
+import shutil
+
 import matplotlib
 import matplotlib.pyplot as plt
-import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
-from langchain_core.tools import tool
-from data_frame import load_dataframe
-from src.logs.logger import logger
-from langchain_core.messages import SystemMessage, HumanMessage
-from src.config import llm_for_pg
-from src.tools.safe_execution import SAFE_BUILTINS, normalize_visualization_artifacts, validate_analysis_code
+import seaborn as sns
+import pandas as pd
 
-matplotlib.use('Agg')
-plt.style.use('dark_background')
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.tools import tool
+
+from data_frame import load_dataframe
+from src.config import llm_for_pg
+from src.logs.logger import logger
+from src.tools.code_executor import (
+    execute_generated_code,
+    extract_python_code,
+)
+from src.tools.safe_execution import normalize_visualization_artifacts
+
+matplotlib.use("Agg")
+plt.style.use("dark_background")
+
 
 @tool
-def create_visualization_tool(plot_description: str, run_id: str) -> str:
+def create_visualization_tool(
+    plot_description: str,
+    run_id: str = "default",
+) -> dict:
     """
-    Use this tool ONLY when you need to generate a chart, graph, or plot.
-    Pass a highly detailed string describing the plot you want, including which columns to use for X and Y axes, 
-    colors, and the title.
+    Generate visualizations for the loaded dataframe.
     """
-    print(f"[VISUALIZER] Generating interactive Plotly/Seaborn plots: {plot_description}...")
 
-    # Check if LangGraph provides an artifact directory, otherwise fallback to charts/{run_id}
-    base_artifact_dir = os.environ.get("LANGGRAPH_ARTIFACTS_DIR", "charts")
-    charts_dir = os.path.join(base_artifact_dir, run_id) if run_id else base_artifact_dir
-    os.makedirs(charts_dir, exist_ok=True)
+    logger.info("Visualization Tool started.")
+
+    artifact_root = os.environ.get(
+        "LANGGRAPH_ARTIFACTS_DIR",
+        "charts",
+    )
+
+    charts_dir = os.path.join(
+        artifact_root,
+        run_id,
+    )
+
+    # -----------------------------
+    # Fresh artifact directory
+    # -----------------------------
+
+    if os.path.exists(charts_dir):
+        shutil.rmtree(charts_dir)
+
+    os.makedirs(
+        charts_dir,
+        exist_ok=True,
+    )
+
     global_df = load_dataframe()
 
-    sys_prompt = (
-        "You are an expert Data Visualizer specializing in Plotly Express, Plotly Graph Objects, and Seaborn. "
-        "Write clean, error-free Python code to generate gorgeous, interactive plots based on the user's request. "
-        "CRITICAL ABSOLUTE RULES: "
-        "1. The data is ALREADY loaded in memory as a pandas DataFrame named `global_df`. DO NOT read files. "
-        "1a. Do not use import statements; `px`, `go`, `sns`, and `plt` are already available. "
-        "2. PREFER PLOTLY (`px` or `go`) for interactive charts (donuts, scatter, 3D, bar, animated plots). "
-        "3. DARK THEME ENFORCEMENT: "
-        "   - For Plotly, always add `template='plotly_dark'` and `fig.update_layout(paper_bgcolor='black', plot_bgcolor='black')`. "
-        "   - For colorscales, use valid built-in strings like 'Viridis', 'Plasma', 'Blues', 'Greens', 'Turbo'. NEVER pass custom tuples or invalid strings like 'Plotly' to colorways. "
-        "4. SAVING FILES: "
-        f"   - Save Plotly figures as interactive HTML files inside `{charts_dir}/`, for example `fig.write_html('{charts_dir}/chart.html')`. "
-        f"   - Save Matplotlib/Seaborn as PNGs inside `{charts_dir}/`, for example `plt.savefig('{charts_dir}/chart.png', bbox_inches='tight', facecolor='black')`. "
-        "   - DO NOT use `plt.show()` or `fig.show()`. "
-        "5. IF MULTIPLE PLOTS ARE REQUESTED, write the code to generate and save ALL of them in this single script. "
-        "6. OUTPUT ONLY PYTHON CODE inside ```python ... ``` blocks."
-    )
-    
-    user_prompt = f"Data Columns Available: {list(global_df.columns)}\nData Schema:\n{global_df.dtypes}\n\nPlot Request: {plot_description}"
-    
-    try:
-        response = llm_for_pg.invoke([
-            SystemMessage(content=sys_prompt),
-            HumanMessage(content=user_prompt)
-        ])
-    except Exception as exc:
-        return json.dumps({"status": "failed", "files": [], "error": f"Visualization model unavailable: {exc.__class__.__name__}"})
-    
-    raw_output = response.content
-    code_match = re.search(r"```python\n(.*?)\n```", raw_output, re.DOTALL)
-    code = code_match.group(1) if code_match else raw_output
-    code = re.sub(r"^\s*(?:from\s+\S+\s+import\s+.+|import\s+.+)\s*$", "", code, flags=re.MULTILINE)
-    code = re.sub(r"^\s*(?:plt|fig)\.show\(\)\s*$", "", code, flags=re.MULTILINE)
+    system_prompt = f"""
+You are a Senior Python Data Visualization Engineer.
 
-    code = normalize_visualization_artifacts(code, charts_dir)
-    
-    exec_globals = {
-        "__builtins__": SAFE_BUILTINS,
-        "global_df": global_df,
-        "plt": plt,
-        "sns": sns,
-        "px": px,
-        "go": go
-    }
-    
+Generate ONLY Python code.
+
+Rules
+
+1. The dataframe already exists as `global_df`.
+
+2. Never import anything.
+
+3. Available objects
+
+- px
+- go
+- sns
+- plt
+
+4. Prefer Plotly.
+
+5. Never call
+
+plt.show()
+fig.show()
+
+6. Every figure MUST be saved inside
+
+{charts_dir}
+
+7. Plotly
+
+fig.write_html(...)
+
+8. Matplotlib
+
+plt.savefig(...)
+
+9. Generate every requested chart.
+
+10. Return ONLY a Python code block.
+"""
+
+    user_prompt = f"""
+Dataset Columns
+
+{list(global_df.columns)}
+
+Dataset Schema
+
+{global_df.dtypes}
+
+Visualization Request
+
+{plot_description}
+"""
+
+    # ----------------------------------------------------
+
     try:
-        exec(compile(validate_analysis_code(code, artifact_dir=charts_dir), "<generated-visualization>", "exec"), exec_globals)
-        saved_files = [os.path.join(charts_dir, filename).replace("\\", "/") for filename in os.listdir(charts_dir)]
-        if not saved_files:
-            return json.dumps({"status": "failed", "files": [], "error": "The visualizer did not create any chart files."})
-        msg = json.dumps({"status": "success", "files": saved_files})
-        print(f"[VISUALIZER SUCCESS] Plots saved in 'charts/' -> {saved_files}")
-        return msg
-    except Exception as e:
-        error_msg = str(e)
-        print(f"[VISUALIZER CRASHED] The generated code failed: {error_msg}")
-        return json.dumps({"status": "failed", "files": [], "error": error_msg})
+
+        response = llm_for_pg.invoke(
+            [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ]
+        )
+
+    except Exception as exc:
+
+        logger.exception("Visualization model failed.")
+
+        return {
+            "status": "failed",
+            "generated_code": "",
+            "execution_output": "",
+            "error": str(exc),
+            "files": [],
+        }
+
+    code = extract_python_code(
+        response.content
+    )
+
+    code = normalize_visualization_artifacts(
+        code,
+        charts_dir,
+    )
+
+    result = execute_generated_code(
+        code=code,
+        exec_globals={
+            "global_df": global_df,
+            "plt": plt,
+            "pd":pd,
+            "sns": sns,
+            "px": px,
+            "go": go,
+        },
+        artifact_dir=charts_dir,
+        task_name="visualization",
+    )
+
+    # ----------------------------------------------------
+    # Execution failed
+    # ----------------------------------------------------
+
+    if result["status"] == "failed":
+
+        logger.error("Visualization execution failed.")
+
+        return {
+            "status": "failed",
+            "generated_code": result.get("code", ""),
+            "execution_output": result.get("output", ""),
+            "error": result.get("error", ""),
+            "files": [],
+        }
+
+    # ----------------------------------------------------
+    # Collect generated charts
+    # ----------------------------------------------------
+
+    saved_files = sorted(
+        os.path.join(charts_dir, f).replace("\\", "/")
+        for f in os.listdir(charts_dir)
+    )
+
+    if not saved_files:
+
+        logger.warning(
+            "Visualization succeeded but produced no charts."
+        )
+
+        return {
+            "status": "failed",
+            "generated_code": result.get("code", ""),
+            "execution_output": result.get("output", ""),
+            "error": "No chart files were generated.",
+            "files": [],
+        }
+
+    logger.info(
+        "Visualization Tool finished with %d chart(s).",
+        len(saved_files),
+    )
+
+    return {
+        "status": "success",
+        "generated_code": result.get("code", ""),
+        "execution_output": result.get("output", ""),
+        "error": "",
+        "files": saved_files,
+    }

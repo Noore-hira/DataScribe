@@ -1,58 +1,166 @@
 import os
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
 from src.config import llm
 from src.graph.state import GraphState
+from src.graph.state_utils import get_state, require_state
 from src.logs.logger import logger
-from langchain_core.messages import SystemMessage, HumanMessage
-from src.graph.state_utils import require_state
 
-def reporter_node(state: GraphState):
-    """Compile the final report with only artifacts created by this graph run."""
-    logger.info("Reporter is formatting the final output and checking for charts...")
-    
+
+SYSTEM_PROMPT = """
+You are an expert Data Science Technical Writer.
+
+Create a professional markdown report.
+
+The report should contain:
+
+# Executive Summary
+
+# Dataset Overview
+
+# Analysis Results
+
+# Visualization Summary
+
+Describe the generated charts.
+
+Do not generate Python.
+
+Do not mention internal agents.
+
+If execution was only partially successful,
+clearly explain which parts completed successfully
+and which parts could not be completed.
+
+Use ONLY the provided execution results.
+"""
+
+
+def reporter_node(state: GraphState) -> GraphState:
+
+    logger.info("Reporter started.")
+
     if state.get("fatal_error"):
         return {"final_report": state["fatal_error"]}
-    
-    # Use the explicit artifact list for this run. Do not include stale files
-    # created by earlier Studio threads.
-    embedded_charts_md = ""
-    chart_files = state.get("chart_files", [])
-    if chart_files:
-        print(f"Found {len(chart_files)} chart(s) for this run. Embedding into report...")
-        embedded_charts_md = "\n\n### Generated Visualizations & Interactive Dashboards\n"
-        for file_path in chart_files:
-            file = os.path.basename(file_path)
-            if file.endswith(".html"):
-                # Embed interactive Plotly charts via iframe
-                embedded_charts_md += f"\n- **{file}**:\n  <iframe src='{file_path}' width='100%' height='500px' style='border:none;'></iframe>\n"
-            elif file.endswith(".png"):
-                # Embed static matplotlib/seaborn charts via markdown image
-                embedded_charts_md += f"\n- **{file}**:\n  ![{file}]({file_path})\n"
 
-    sys_prompt = (
-            "You are an expert Data Science Technical Writer. Your job is to compile a professional, "
-            "comprehensive final markdown report based on the provided data cleaning execution outputs, "
-            "summary statistics, and insights.\n"
-            "CRITICAL RULE: Do NOT write Python code blocks or code examples for the charts or visualizations. "
-            "The charts have already been automatically generated and embedded as interactive dashboards at the end of the report. "
-            "Focus purely on presenting data insights, tables, statistics, and business findings."
-        )
-    
-    user_content = (
-        f"User Query: {require_state(state, "user_query")}\n\n"
-        f"Analysis & Execution Output:\n{state.get('execution_output', '')}\n\n"
-        f"Dataset Schema:\n{require_state(state, "df_schema")}"
-    )
-    
+    user_query = require_state(state, "user_query")
+    schema = require_state(state, "df_schema")
+
+    user_prompt = f"""
+User Request
+
+{user_query}
+
+
+Execution Plan
+
+{get_state(state, "plan", "")}
+
+
+Dataset Schema
+
+{schema}
+
+Supervisor Feedback
+
+{state.get("supervisor_feedback","")}
+
+
+Execution Output
+
+{get_state(state, "execution_output", "")}
+
+
+Generated Charts
+
+{get_state(state, "chart_files", [])}
+
+
+Critic Verdict
+
+{get_state(state, "critic_verdict", "pass")}
+
+
+Critic Feedback
+
+{get_state(state, "critic_feedback", "")}
+"""
+
     try:
-        response = llm.invoke([
-            SystemMessage(content=sys_prompt),
-            HumanMessage(content=user_content)
-        ])
-    except Exception as exc:
-        return {"final_report": f"Analysis completed, but the reporting model is unavailable ({exc.__class__.__name__}).\n\nRaw results:\n{state.get('execution_output', '')}" + embedded_charts_md}
-    
-    final_markdown = response.content + embedded_charts_md
-    
+
+        response = llm.invoke(
+            [
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=user_prompt),
+            ]
+        )
+
+        report = response.content
+
+    except Exception:
+
+        logger.exception("Reporter failed.")
+
+        report = get_state(state, "execution_output", "")
+
+    charts_md = ""
+
+    chart_files = get_state(state, "chart_files", [])
+
+    if chart_files:
+
+        charts_md += "\n\n# Generated Visualizations\n"
+
+        for path in chart_files:
+
+            filename = os.path.basename(path)
+
+            if filename.endswith(".html"):
+
+                charts_md += f"""
+## {filename}
+
+<iframe
+src="{path}"
+width="100%"
+height="600"
+style="border:none;">
+</iframe>
+
+"""
+
+            elif filename.endswith(".png"):
+
+                charts_md += f"""
+## {filename}
+
+![{filename}]({path})
+
+"""
+
+    warning_md = ""
+
+    if get_state(state, "critic_verdict") == "abort":
+
+        warning_md = f"""
+
+---
+
+# ⚠ Partial Completion
+
+The requested task could not be fully completed after **{get_state(state, "retry_count", 0)}** retry attempt(s).
+
+Reason:
+
+{get_state(state, "critic_feedback", "")}
+
+The successfully generated outputs have been included in this report.
+
+"""
+
+    logger.info("Final report generated.")
+
     return {
-        "final_report": final_markdown
+        "final_report": report + warning_md + charts_md
     }

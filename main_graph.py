@@ -1,136 +1,166 @@
-import io
 from dotenv import load_dotenv
-import pandas as pd
-from src.logs.logger import logger
-from src.graph.state import GraphState, InputState
-from data_frame import load_dataframe
-from langgraph.graph import StateGraph, END
-from src.graph.state_utils import require_state
-from src.agents.executor_node import executor_node
-from src.agents.supervisor_node import supervisor_node
+from langgraph.graph import END, StateGraph
+
 from src.agents.critic_node import critic_node
-from src.agents.planner_node import planner_node
-from src.agents.designer_node import designer_node
-from src.agents.reporter_node import reporter_node
-from src.agents.programmer_node import programmer_node
+from src.agents.executor_node import executor_node
 from src.agents.initialize_node import initialize_node
+from src.agents.planner_node import planner_node
+from src.agents.programmer_node import programmer_node
+from src.agents.reporter_node import reporter_node
+from src.agents.supervisor_node import supervisor_node
+from src.graph.state import GraphState
+from src.graph.state_utils import require_state
+from src.logs.logger import logger
 
 load_dotenv()
 
-def route_from_supervisor(state: GraphState):
-    """Route according to the supervisor's decision."""
 
+# ----------------------------------------------------
+# Routing
+# ----------------------------------------------------
+
+def route_from_supervisor(state: GraphState) -> str:
     decision = require_state(state, "supervisor_decision")
 
-    logger.info("Supervisor selected '%s'.", decision)
+    logger.info("Supervisor routing -> %s", decision)
 
-    supervisor_routes = {
-        "planner": "planner",
-        "programmer": "programmer",
-        "designer": "designer",
-        "reporter": "reporter",
-        "end": END,
-    }
-
-    if decision not in supervisor_routes:
-        raise ValueError(f"Unknown supervisor decision: {decision}")
-
-    return supervisor_routes[decision]
+    return decision
 
 
-def route_from_critic(state: GraphState):
-    """Route based on the critic's review."""
-
+def route_from_critic(state: GraphState) -> str:
     verdict = require_state(state, "critic_verdict")
 
-    logger.info("Critic verdict: %s", verdict.upper())
+    logger.info(
+        "Critic verdict -> %s (retry=%d)",
+        verdict,
+        state.get("retry_count", 0),
+    )
 
-    critic_routes = {
-        "pass": "supervisor",
-        "fail": "programmer",
-    }
+    if verdict == "fail":
+        return "programmer"
 
-    if verdict not in critic_routes:
-        raise ValueError(f"Unknown critic verdict: {verdict}")
+    return "reporter"
 
-    return critic_routes[verdict]
 
-workflow = StateGraph(GraphState, input_schema=InputState)
+# ----------------------------------------------------
+# Graph
+# ----------------------------------------------------
 
-# Add all factory nodes
+workflow = StateGraph(GraphState)
+
 workflow.add_node("initialize", initialize_node)
 workflow.add_node("supervisor", supervisor_node)
 workflow.add_node("planner", planner_node)
-workflow.add_node("designer", designer_node)
 workflow.add_node("programmer", programmer_node)
 workflow.add_node("executor", executor_node)
 workflow.add_node("critic", critic_node)
 workflow.add_node("reporter", reporter_node)
 
+# ----------------------------------------------------
+# Entry
+# ----------------------------------------------------
+
 workflow.set_entry_point("initialize")
+
 workflow.add_edge("initialize", "supervisor")
 
-# Supervisor conditional routing supporting the complete pipeline sequence
+# ----------------------------------------------------
+# Supervisor
+# ----------------------------------------------------
+
 workflow.add_conditional_edges(
     "supervisor",
     route_from_supervisor,
     {
         "planner": "planner",
-        "programmer": "programmer",
-        "designer": "designer",
         "reporter": "reporter",
-        END: END
-    }
+        "end": END,
+    },
 )
 
-# Return paths to supervisor after task completion
-workflow.add_edge("planner", "supervisor")
-workflow.add_edge("designer", "supervisor")
-workflow.add_edge("reporter", "supervisor")
+# ----------------------------------------------------
+# Planner Pipeline
+# ----------------------------------------------------
 
-# Execution loop for programming and data cleaning tasks
+workflow.add_edge("planner", "programmer")
+
 workflow.add_edge("programmer", "executor")
+
 workflow.add_edge("executor", "critic")
+
+# ----------------------------------------------------
+# Critic
+# ----------------------------------------------------
 
 workflow.add_conditional_edges(
     "critic",
     route_from_critic,
     {
         "programmer": "programmer",
-        "supervisor": "supervisor",
+        "reporter": "reporter",
     },
 )
 
-# Studio manages persistence and checkpointers for graphs loaded through the
-# LangGraph API. Keep this module import-safe and do not supply one here.
+# ----------------------------------------------------
+# Reporter
+# ----------------------------------------------------
+
+# The Supervisor reviews every report before ending.
+workflow.add_edge("reporter", "supervisor")
+
+# ----------------------------------------------------
+
 app = workflow.compile()
 
-user_thread_id = "user_session_123"
-config = {"configurable": {"thread_id": user_thread_id}}
 
 if __name__ == "__main__":
-    # This is a local convenience only; it must not execute during a Studio
-    # graph import.
-    png_bytes = app.get_graph().draw_mermaid_png()
+
+    logger.info("Generating workflow diagram...")
+
     with open("workflow_diagram.png", "wb") as f:
-        f.write(png_bytes)
-    print("Workflow diagram saved as 'workflow_diagram.png'")
+        f.write(app.get_graph().draw_mermaid_png())
 
-    initial_state = {
-        "user_query":
-            "tell me about the dataset and "
-            "give me insights from it and "
-            "also create donut plot and bar chart"
-    }
+    logger.info("Workflow diagram saved as workflow_diagram.png")
 
-    print("Starting production agentic workflow...\n")
-    result = app.invoke(initial_state, config=config)
-    
-    print("\n" + "="*40)
-    print("FINAL APPROVED REPORT")
-    print("="*40)
+    user_query = ("give me overview of dataset")
 
-    if result.get("final_report"):
-        print(result["final_report"])
-    else:
-        print("Graph execution completed, but no final report was generated.")
+    logger.info("Starting workflow execution...")
+
+    result = app.invoke(
+        {
+            "user_query": user_query,
+        },
+        config={
+            "configurable": {
+                "thread_id": "test_session_001",
+            }
+        },
+    )
+
+    print("\n" + "=" * 60)
+    print("FINAL REPORT")
+    print("=" * 60)
+
+    print(
+        result.get(
+            "final_report",
+            "Workflow completed but no report was generated.",
+        )
+    )
+
+    print("\n" + "=" * 60)
+    print("WORKFLOW STATE")
+    print("=" * 60)
+
+    print(
+        {
+            "supervisor": result.get("supervisor_decision"),
+            "supervisor_reviews": result.get("supervisor_review_count"),
+            "planner": bool(result.get("plan")),
+            "critic": result.get("critic_verdict"),
+            "retry_count": result.get("retry_count"),
+            "execution_status": result.get("execution_status"),
+            "charts": len(result.get("chart_files", [])),
+            "error": result.get("execution_error"),
+        }
+    )

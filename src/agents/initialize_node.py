@@ -1,56 +1,73 @@
 import io
 
 from data_frame import load_dataframe
-from src.graph.state import GraphState, InputState
+from src.graph.state import GraphState
 from src.logs.logger import logger
 
 
-def initialize_node(state: InputState) -> GraphState:
+def initialize_node(state: GraphState) -> GraphState:
     """
-    Initializes the workflow state.
+    Initialize the workflow state.
+    """
 
-    Runs exactly once at the beginning of every graph execution.
-    Responsible for preparing dataset metadata and default state values.
-    """
     logger.info("Initializing workflow...")
 
     dataframe = load_dataframe()
 
-    # Dataset schema
     buffer = io.StringIO()
     dataframe.info(buf=buffer)
 
     schema = (
-        f"{buffer.getvalue()}\n\n"
-        f"Null Count:\n{dataframe.isnull().sum()}"
+        buffer.getvalue()
+        + "\n\nNull Count:\n"
+        + dataframe.isnull().sum().to_string()
     )
 
-    memory_usage_mb = float(
+    memory_usage_mb = (
         dataframe.memory_usage(deep=True).sum()
         / (1024 ** 2)
     )
 
     return {
+
+        # Conversation
+        "messages": [],
         "user_query": state["user_query"],
 
-        # dataset metadata
+        # Dataset
         "df_schema": schema,
-        "memory_usage_mb": memory_usage_mb,
+        "memory_usage_mb": float(memory_usage_mb),
 
-        # execution state
-        "retry_count": 0,
-        "revision_count": 0,
-        "has_error": False,
+        # Planning
+        "plan": "",
+
+        # Supervisor
+        "supervisor_decision": None,
+        "supervisor_review_count": 0,
+        "max_supervisor_reviews": 2,
+
+        # Programmer
+        "generated_code": "",
+        "agent_output": "",
+        "previous_feedback": "",
+
+        # Executor
+        "execution_status": None,
         "execution_output": "",
-
-        # visualization
-        "charts_completed": False,
+        "execution_error": "",
         "chart_files": [],
 
-        # workflow
-        "plan": None,
-        "current_code": None,
-        "supervisor_decision": None,
-        "fatal_error": None,
-        "final_report": None,
+        # Retry
+        "retry_count": 0,
+        "max_retries": 2,
+
+        # Critic
+        "critic_verdict": None,
+        "critic_feedback": "",
+
+        # Errors
+        "fatal_error": "",
+
+        # Final Report
+        "final_report": "",
     }
