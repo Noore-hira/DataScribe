@@ -14,8 +14,31 @@ class GraphState(TypedDict, total=False):
     # Conversation
     # =====================================================
 
+    # LangGraph message history
     messages: Annotated[list, add_messages]
+
+    # Current user query
     user_query: str
+
+    # Route chosen by Conversation Agent
+    conversation_route: Literal[
+        "answer",
+        "workflow",
+        "reject",
+    ]
+
+    # =====================================================
+    # Conversation Memory
+    # =====================================================
+
+    # Running summary of the conversation
+    session_summary: str
+
+    # Last few user/assistant exchanges
+    recent_messages: list
+
+    # Number of completed conversation turns
+    conversation_turns: int
 
     # =====================================================
     # Dataset
@@ -23,6 +46,10 @@ class GraphState(TypedDict, total=False):
 
     df_schema: str
     memory_usage_mb: float
+
+    # Dataset metadata remembered across the session
+    dataset_name: NotRequired[str]
+    dataset_summary: NotRequired[str]
 
     # =====================================================
     # Planning
@@ -33,9 +60,17 @@ class GraphState(TypedDict, total=False):
     # =====================================================
     # Supervisor
     # =====================================================
-    supervisor_decision: Literal[ "planner","reporter","end" ]
+
+    supervisor_decision: Literal[
+        "planner",
+        "reporter",
+        "end",
+    ]
+
     supervisor_feedback: NotRequired[str]
+
     supervisor_review_count: NotRequired[int]
+
     max_supervisor_reviews: NotRequired[int]
 
     # =====================================================
@@ -43,6 +78,7 @@ class GraphState(TypedDict, total=False):
     # =====================================================
 
     generated_code: NotRequired[str]
+
     agent_output: NotRequired[str]
 
     # =====================================================
@@ -57,7 +93,9 @@ class GraphState(TypedDict, total=False):
     ]
 
     execution_output: NotRequired[str]
+
     execution_error: NotRequired[str]
+
     chart_files: NotRequired[list[str]]
 
     # =====================================================
@@ -65,6 +103,7 @@ class GraphState(TypedDict, total=False):
     # =====================================================
 
     retry_count: NotRequired[int]
+
     max_retries: NotRequired[int]
 
     # =====================================================

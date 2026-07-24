@@ -8,9 +8,11 @@ from src.agents.planner_node import planner_node
 from src.agents.programmer_node import programmer_node
 from src.agents.reporter_node import reporter_node
 from src.agents.supervisor_node import supervisor_node
+from src.agents.conversation_node import conversation_node
 from src.graph.state import GraphState
 from src.graph.state_utils import require_state
 from src.logs.logger import logger
+from langgraph.checkpoint.memory import MemorySaver
 
 load_dotenv()
 
@@ -18,6 +20,9 @@ load_dotenv()
 # ----------------------------------------------------
 # Routing
 # ----------------------------------------------------
+def route_conversation(state: GraphState):
+
+    return state["conversation_route"]
 
 def route_from_supervisor(state: GraphState) -> str:
     decision = require_state(state, "supervisor_decision")
@@ -45,9 +50,11 @@ def route_from_critic(state: GraphState) -> str:
 # ----------------------------------------------------
 # Graph
 # ----------------------------------------------------
+memory = MemorySaver()
 
 workflow = StateGraph(GraphState)
 
+workflow.add_node("conversation", conversation_node)
 workflow.add_node("initialize", initialize_node)
 workflow.add_node("supervisor", supervisor_node)
 workflow.add_node("planner", planner_node)
@@ -60,7 +67,17 @@ workflow.add_node("reporter", reporter_node)
 # Entry
 # ----------------------------------------------------
 
-workflow.set_entry_point("initialize")
+workflow.set_entry_point("conversation")
+
+workflow.add_conditional_edges(
+    "conversation",
+    route_conversation,
+    {
+        "initialize": "initialize",
+        "answer": END,
+        "reject": END,
+    },
+)
 
 workflow.add_edge("initialize", "supervisor")
 
@@ -110,7 +127,9 @@ workflow.add_edge("reporter", "supervisor")
 
 # ----------------------------------------------------
 
-app = workflow.compile()
+app = workflow.compile(
+    checkpointer=memory
+)
 
 
 if __name__ == "__main__":
@@ -122,31 +141,33 @@ if __name__ == "__main__":
 
     logger.info("Workflow diagram saved as workflow_diagram.png")
 
-    user_query = ("give me overview of dataset")
+    user_query = ("whats my name?")
 
     logger.info("Starting workflow execution...")
-
-    result = app.invoke(
-        {
-            "user_query": user_query,
-        },
-        config={
-            "configurable": {
-                "thread_id": "test_session_001",
-            }
-        },
-    )
-
-    print("\n" + "=" * 60)
-    print("FINAL REPORT")
-    print("=" * 60)
-
-    print(
-        result.get(
-            "final_report",
-            "Workflow completed but no report was generated.",
+    while True:
+        result = app.invoke(
+            {
+                "user_query": input(str("ask question")),
+            },
+            config={
+                "configurable": {
+                    "thread_id": "test_session_001",
+                }
+            },
         )
-    )
+
+        print("\n" + "=" * 60)
+        print("FINAL REPORT")
+        print("=" * 60)
+
+        print(
+            result.get(
+                "final_report",
+                "Workflow completed but no report was generated.",
+            )
+        )
+        if result["user_query"]=="q":
+            break
 
     print("\n" + "=" * 60)
     print("WORKFLOW STATE")
@@ -164,3 +185,6 @@ if __name__ == "__main__":
             "error": result.get("execution_error"),
         }
     )
+    print(result["recent_messages"])
+    print(result["conversation_turns"])
+    print(result["session_summary"])

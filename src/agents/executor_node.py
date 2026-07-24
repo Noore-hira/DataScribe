@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
+from plotly.subplots import make_subplots
 import polars as pl
 import seaborn as sns
 
@@ -76,6 +77,7 @@ def executor_node(state: GraphState) -> GraphState:
             "sns": sns,
             "px": px,
             "go": go,
+            "make_subplots": make_subplots,
         }
 
         compiled = compile(

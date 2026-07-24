@@ -30,9 +30,12 @@ def initialize_node(state: GraphState) -> GraphState:
 
     return {
 
-        # Conversation
-        "messages": [],
+        #Conversation
+        "messages": state.get("messages", []),
         "user_query": state["user_query"],
+        "session_summary": state.get("session_summary", ""),
+        "recent_messages": state.get("recent_messages", []),
+        "conversation_turns": state.get("conversation_turns", 0),
 
         # Dataset
         "df_schema": schema,

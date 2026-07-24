@@ -6,6 +6,7 @@ from src.config import llm
 from src.graph.state import GraphState
 from src.graph.state_utils import get_state, require_state
 from src.logs.logger import logger
+from src.memory.memory_manager import update_analysis_memory
 
 
 SYSTEM_PROMPT = """
@@ -42,21 +43,27 @@ def reporter_node(state: GraphState) -> GraphState:
     logger.info("Reporter started.")
 
     if state.get("fatal_error"):
-        return {"final_report": state["fatal_error"]}
+        return {
+            "final_report": state["fatal_error"]
+        }
 
     user_query = require_state(state, "user_query")
     schema = require_state(state, "df_schema")
+
+    chart_files = get_state(
+        state,
+        "chart_files",
+        [],
+    )
 
     user_prompt = f"""
 User Request
 
 {user_query}
 
-
 Execution Plan
 
 {get_state(state, "plan", "")}
-
 
 Dataset Schema
 
@@ -64,23 +71,19 @@ Dataset Schema
 
 Supervisor Feedback
 
-{state.get("supervisor_feedback","")}
-
+{state.get("supervisor_feedback", "")}
 
 Execution Output
 
 {get_state(state, "execution_output", "")}
 
-
 Generated Charts
 
-{get_state(state, "chart_files", [])}
-
+{chart_files}
 
 Critic Verdict
 
 {get_state(state, "critic_verdict", "pass")}
-
 
 Critic Feedback
 
@@ -102,11 +105,17 @@ Critic Feedback
 
         logger.exception("Reporter failed.")
 
-        report = get_state(state, "execution_output", "")
+        report = get_state(
+            state,
+            "execution_output",
+            "",
+        )
+
+    # ==========================================================
+    # Generated Visualizations
+    # ==========================================================
 
     charts_md = ""
-
-    chart_files = get_state(state, "chart_files", [])
 
     if chart_files:
 
@@ -139,6 +148,10 @@ style="border:none;">
 
 """
 
+    # ==========================================================
+    # Partial completion warning
+    # ==========================================================
+
     warning_md = ""
 
     if get_state(state, "critic_verdict") == "abort":
@@ -149,7 +162,8 @@ style="border:none;">
 
 # ⚠ Partial Completion
 
-The requested task could not be fully completed after **{get_state(state, "retry_count", 0)}** retry attempt(s).
+The requested task could not be fully completed after
+**{get_state(state, "retry_count", 0)}** retry attempt(s).
 
 Reason:
 
@@ -159,8 +173,20 @@ The successfully generated outputs have been included in this report.
 
 """
 
+    final_report = report + warning_md + charts_md
+
+    # ==========================================================
+    # Update conversation memory
+    # ==========================================================
+
+    memory_updates = update_analysis_memory(
+        state,
+        report,
+    )
+
     logger.info("Final report generated.")
 
     return {
-        "final_report": report + warning_md + charts_md
-    }
+        "final_report": report + warning_md + charts_md,
+        **memory_updates,
+        }
