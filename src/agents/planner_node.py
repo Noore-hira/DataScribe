@@ -1,5 +1,11 @@
+from __future__ import annotations
+
+import json
 import re
-from pydantic import BaseModel, Field
+from json import JSONDecodeError
+
+from pydantic import BaseModel, Field, ValidationError
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -9,27 +15,26 @@ from src.graph.state_utils import require_state
 from src.logs.logger import logger
 
 
+# ==========================================================
+# Planner Schema
+# ==========================================================
+
 class ExecutionPlan(BaseModel):
-    summary: str = Field(
-        description="High-level summary of the requested task."
-    )
 
-    analysis_tasks: list[str] = Field(
-        description="Analysis or data-cleaning tasks that must be completed."
-    )
+    summary: str = ""
 
-    visualization_tasks: list[str] = Field(
-        description="Charts or visualizations that should be created."
-    )
+    analysis_tasks: list[str] = Field(default_factory=list)
 
-    statistical_tasks: list[str] = Field(
-        description="Statistical calculations or aggregations required."
-    )
+    visualization_tasks: list[str] = Field(default_factory=list)
 
-    execution_order: list[str] = Field(
-        description="Ordered list of work stages."
-    )
+    statistical_tasks: list[str] = Field(default_factory=list)
 
+    execution_order: list[str] = Field(default_factory=list)
+
+
+# ==========================================================
+# Planner Prompt
+# ==========================================================
 
 SYSTEM_PROMPT = """
 You are the Planner Agent of an AI Data Science system.
@@ -62,21 +67,112 @@ Rules:
 
 • execution_order should describe the work sequence.
 
-Typical execution orders:
+Typical execution orders
 
-Analysis only:
+Analysis only
+
 ["Analysis"]
 
-Charts only:
+Charts only
+
 ["Visualization"]
 
-Analysis + Charts:
-["Analysis", "Visualization"]
+Analysis + Charts
+
+["Analysis","Visualization"]
+
+If a section has no tasks return an empty list.
 """
 
 
-def planner_node(state: GraphState):
-    """Generate a structured execution plan."""
+JSON_INSTRUCTIONS = """
+Return ONLY valid JSON.
+
+Schema
+
+{
+    "summary": string,
+    "analysis_tasks": [string],
+    "visualization_tasks": [string],
+    "statistical_tasks": [string],
+    "execution_order": [string]
+}
+
+Rules
+
+- Return ONLY JSON.
+- No markdown.
+- No explanations.
+- No code fences.
+- No extra keys.
+- Empty sections should be [].
+"""
+
+
+# ==========================================================
+# Planner Generator
+# ==========================================================
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_fixed(1),
+    reraise=True,
+)
+def generate_plan(messages) -> ExecutionPlan:
+
+    response = llm.invoke(messages)
+
+    text = response.content.strip()
+
+    # Remove markdown fences
+    if text.startswith("```"):
+
+        text = (
+            text.replace("```json", "")
+            .replace("```", "")
+            .strip()
+        )
+
+    # Extract JSON if model added extra text
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+
+    if match:
+        text = match.group(0)
+
+    try:
+
+        data = json.loads(text)
+
+        plan = ExecutionPlan.model_validate(data)
+
+    except JSONDecodeError:
+
+        logger.error("Planner returned invalid JSON.")
+        logger.error(text)
+        raise
+
+    except ValidationError:
+
+        logger.error("Planner JSON failed validation.")
+        logger.error(text)
+        raise
+
+    # Planner shouldn't return an empty plan
+    if not (
+        plan.analysis_tasks
+        or plan.visualization_tasks
+        or plan.statistical_tasks
+    ):
+        raise ValueError("Planner returned an empty execution plan.")
+
+    return plan
+
+
+# ==========================================================
+# Planner Node
+# ==========================================================
+
+def planner_node(state: GraphState) -> GraphState:
 
     logger.info("Planner started.")
 
@@ -85,11 +181,13 @@ def planner_node(state: GraphState):
 
     try:
 
-        planner = llm.with_structured_output(ExecutionPlan)
-
-        plan: ExecutionPlan = planner.invoke(
+        plan = generate_plan(
             [
-                SystemMessage(content=SYSTEM_PROMPT),
+                SystemMessage(
+                    content=SYSTEM_PROMPT
+                    + "\n\n"
+                    + JSON_INSTRUCTIONS
+                ),
                 HumanMessage(
                     content=f"""
 User Request
@@ -102,11 +200,11 @@ Dataset Schema
 
 Supervisor Feedback
 
-{state.get("supervisor_feedback","")}
+{state.get("supervisor_feedback", "")}
 
 Current Execution Plan
 
-{state.get("plan","")}
+{state.get("plan", "")}
 """
                 ),
             ]
@@ -127,8 +225,11 @@ Current Execution Plan
         }
 
     logger.info(
-        "Planner created %d analysis task(s) and %d visualization task(s).",
+        "Planner created %d analysis task(s), "
+        "%d statistical task(s), "
+        "%d visualization task(s).",
         len(plan.analysis_tasks),
+        len(plan.statistical_tasks),
         len(plan.visualization_tasks),
     )
 
@@ -139,17 +240,17 @@ Summary:
 Analysis Tasks:
 {chr(10).join(f"- {task}" for task in plan.analysis_tasks)}
 
-Visualization Tasks:
-{chr(10).join(f"- {task}" for task in plan.visualization_tasks)}
-
 Statistical Tasks:
 {chr(10).join(f"- {task}" for task in plan.statistical_tasks)}
+
+Visualization Tasks:
+{chr(10).join(f"- {task}" for task in plan.visualization_tasks)}
 
 Execution Order:
 {" → ".join(plan.execution_order)}
 """.strip()
 
-    # Safety: remove accidental fenced code blocks if the model ignores instructions.
+    # Safety: remove accidental code blocks
     formatted_plan = re.sub(
         r"```(?:python)?\s*.*?```",
         "",

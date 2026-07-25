@@ -1,0 +1,19 @@
+id,user_query,difficulty
+1,Forecast sales for the next twelve months using the available data.,Hard
+2,Perform exploratory data analysis on the uploaded dataset.,Easy
+3,Analyze customer purchase frequency by month.,Medium
+4,Find missing values in the dataset.,Easy
+5,Detect duplicate records.,Easy
+6,Create a histogram of the Age column.,Easy
+7,Create a correlation heatmap.,Easy
+8,Build an executive sales dashboard with KPIs trends category analysis and regional comparisons.,Hard
+9,Create a scatter plot between Age and Salary.,Easy
+10,Compare product performance across regions years and product categories.,Hard
+11,List all categorical and numerical columns with basic statistics.,Easy
+12,Perform complete exploratory data analysis and generate appropriate charts.,Medium
+13,Find the top 10 products by sales and visualize them.,Medium
+14,Compare average salary across departments using suitable charts.,Medium
+15,Perform end to end data quality assessment statistical analysis visualization and dashboard generation for the uploaded dataset.,Hard
+16,Compare customer age distributions across genders.,Medium
+17,Analyze sales by category and region using charts and statistics.,Medium
+18,Perform complete exploratory data analysis including data cleaning descriptive statistics and visualizations.,Hard
