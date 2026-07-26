@@ -128,7 +128,7 @@ workflow.add_edge("reporter", "supervisor")
 # ----------------------------------------------------
 
 app = workflow.compile(
-    checkpointer=memory
+    #checkpointer=memory
 )
 
 

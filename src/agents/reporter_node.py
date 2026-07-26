@@ -189,4 +189,12 @@ The successfully generated outputs have been included in this report.
     return {
         "final_report": report + warning_md + charts_md,
         **memory_updates,
+
+        "reporter_metrics": {
+
+        "charts": len(chart_files),
+
+        "report_length": len(report)
+
+    }
         }

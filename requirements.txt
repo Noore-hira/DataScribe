@@ -11,3 +11,10 @@ scipy
 tabulate
 dotenv
 polar
+fastapi
+uvicorn[standard]
+python-multipart
+pandas
+openpyxl
+aiofiles
+sse-starlette

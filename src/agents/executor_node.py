@@ -116,4 +116,12 @@ def executor_node(state: GraphState) -> GraphState:
         "execution_output": stdout.getvalue(),
         "execution_error": "",
         "chart_files": chart_files,
+        "executor_metrics": {
+
+        "charts": len(chart_files),
+
+        "success": True
+
+    }
+
     }

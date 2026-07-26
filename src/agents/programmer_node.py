@@ -179,4 +179,9 @@ Do not rewrite the entire program unless necessary.
     return {
         "generated_code": code,
         "agent_output": response.content,
+        "programmer_metrics": {
+
+            "lines": len(code.splitlines()),
+            "characters": len(code)
+            }
     }

@@ -260,4 +260,10 @@ Execution Order:
 
     return {
         "plan": formatted_plan,
+
+        "planner_metrics": {
+            "analysis_tasks": len(plan.analysis_tasks),
+            "visualization_tasks": len(plan.visualization_tasks),
+            "statistical_tasks": len(plan.statistical_tasks),
+        }
     }

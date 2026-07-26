@@ -195,4 +195,7 @@ Current User Query
         "conversation_route": decision.decision,
         "final_report": decision.response,
         **memory_updates,
+        "conversation_metrics": {
+            "route": decision.decision
+            }
     }
