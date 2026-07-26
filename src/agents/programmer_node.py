@@ -1,6 +1,6 @@
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from src.config import llm_for_pg
+from src.config import get_llm
 from src.graph.state import GraphState
 from src.logs.logger import logger
 from src.tools.code_executor import extract_python_code
@@ -150,7 +150,7 @@ Update ONLY the failing parts.
 Do not rewrite the entire program unless necessary.
 """
 
-    response = llm_for_pg.invoke(
+    response = get_llm(state.get("api_key"), state.get("model"), max_retries=2).invoke(
         [
             SystemMessage(content=SYSTEM_PROMPT),
             HumanMessage(content=prompt),

@@ -20,6 +20,10 @@ class GraphState(TypedDict, total=False):
     # Current user query
     user_query: str
 
+    # LLM configuration (per-request, from frontend)
+    api_key: NotRequired[str]
+    model: NotRequired[str]
+
     # Route chosen by Conversation Agent
     conversation_route: Literal[
         "answer",

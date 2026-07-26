@@ -9,7 +9,7 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from src.config import llm
+from src.config import get_llm
 from src.graph.state import GraphState
 from src.graph.state_utils import require_state
 from src.logs.logger import logger
@@ -118,9 +118,9 @@ Rules
     wait=wait_fixed(1),
     reraise=True,
 )
-def generate_plan(messages) -> ExecutionPlan:
+def generate_plan(messages, llm_instance) -> ExecutionPlan:
 
-    response = llm.invoke(messages)
+    response = llm_instance.invoke(messages)
 
     text = response.content.strip()
 
@@ -207,7 +207,8 @@ Current Execution Plan
 {state.get("plan", "")}
 """
                 ),
-            ]
+            ],
+            get_llm(state.get("api_key"), state.get("model")),
         )
 
     except Exception as exc:

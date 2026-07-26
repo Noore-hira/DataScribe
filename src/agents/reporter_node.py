@@ -2,7 +2,7 @@ import os
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from src.config import llm
+from src.config import get_llm
 from src.graph.state import GraphState
 from src.graph.state_utils import get_state, require_state
 from src.logs.logger import logger
@@ -92,7 +92,7 @@ Critic Feedback
 
     try:
 
-        response = llm.invoke(
+        response = get_llm(state.get("api_key"), state.get("model")).invoke(
             [
                 SystemMessage(content=SYSTEM_PROMPT),
                 HumanMessage(content=user_prompt),

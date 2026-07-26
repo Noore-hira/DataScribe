@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from src.config import llm
+from src.config import get_llm
 from src.graph.state import GraphState
 from src.logs.logger import logger
 from src.memory.memory_manager import update_conversation_memory
@@ -150,7 +150,7 @@ Recent Conversation
 {recent_messages}
 """
 
-    router = llm.with_structured_output(
+    router = get_llm(state.get("api_key"), state.get("model")).with_structured_output(
         ConversationDecision
     )
 

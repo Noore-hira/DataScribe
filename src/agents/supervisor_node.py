@@ -3,7 +3,7 @@ from typing import Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from src.config import llm
+from src.config import get_llm
 from src.graph.state import GraphState
 from src.graph.state_utils import get_state
 from src.logs.logger import logger
@@ -292,7 +292,7 @@ REPORTER OUTPUT
 
     try:
 
-        router = llm.with_structured_output(SupervisorDecision)
+        router = get_llm(state.get("api_key"), state.get("model")).with_structured_output(SupervisorDecision)
 
         decision = router.invoke(
             [

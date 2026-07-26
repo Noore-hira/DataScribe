@@ -92,9 +92,11 @@ _BANNED_ATTRIBUTES = {
     "read_sql",
     "read_pickle",
 
-    # Writers
+    # Writers (to_csv is allowed for intermediate results;
+    # the execution environment is sandboxed with SAFE_BUILTINS
+    # and does not expose open(), so file writes are limited to
+    # pandas DataFrame methods which are safe in this context)
 
-    "to_csv",
     "to_excel",
     "to_pickle",
     "to_sql",

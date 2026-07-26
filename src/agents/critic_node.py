@@ -5,7 +5,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 from tenacity import retry, stop_after_attempt, wait_fixed
 
-from src.config import llm
+from src.config import get_llm
 from src.graph.state import GraphState
 from src.logs.logger import logger
 
@@ -111,9 +111,9 @@ Keep feedback concise (1-2 sentences).
     stop=stop_after_attempt(3),
     wait=wait_fixed(1),
 )
-def review_execution(review: str) -> CriticVerdict:
+def review_execution(review: str, llm_instance) -> CriticVerdict:
 
-    response = llm.invoke(
+    response = llm_instance.invoke(
         [
             SystemMessage(
                 content=SYSTEM_PROMPT
@@ -237,7 +237,7 @@ Generated Charts
 
     try:
 
-        verdict = review_execution(review)
+        verdict = review_execution(review, get_llm(state.get("api_key"), state.get("model")))
 
     except Exception:
 

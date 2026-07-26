@@ -58,9 +58,20 @@ app.add_middleware(
 # Static Files
 # ==========================================================
 
+import os
+
+# Ensure absolute directory resolution so it never fails regardless of where uvicorn is launched
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CHARTS_DIR = os.path.join(BASE_DIR, "charts") # Adjust if charts are inside Backend/charts
+
+# If your charts folder is inside Backend/app or root:
+# CHARTS_DIR = os.path.abspath(os.path.join(BASE_DIR, "../charts"))
+
+os.makedirs(CHARTS_DIR, exist_ok=True)
+
 app.mount(
     "/charts",
-    StaticFiles(directory="Backend/storage/charts"),
+    StaticFiles(directory=CHARTS_DIR),
     name="charts",
 )
 
