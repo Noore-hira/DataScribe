@@ -287,7 +287,7 @@ def _process_graph_event(event: dict):
 
                 results.append(sse(
                     "retry",
-                    retry=output.get(
+                    retry_count=output.get(
                         "retry_count",
                         0,
                     ),
