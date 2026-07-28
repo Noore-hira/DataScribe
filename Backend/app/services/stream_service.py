@@ -1,7 +1,7 @@
 import asyncio
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from Backend.app.services.graph_service import run_graph
 
@@ -75,11 +75,12 @@ def sse(event: str, **data):
 
     return {
         "event": event,
-        "data": json.dumps(
+    "data": json.dumps(
             {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 **data,
-            }
+            },
+            default=str,
         ),
     }
 
@@ -134,10 +135,10 @@ def extract_metrics(node: str, output: dict):
 
     if node == "executor":
         return {
-            "status": output.get(
+            "execution_status": output.get(
                 "execution_status"
             ),
-            "charts": len(
+            "charts_generated": len(
                 output.get(
                     "chart_files",
                     [],
@@ -147,10 +148,10 @@ def extract_metrics(node: str, output: dict):
 
     if node == "critic":
         return {
-            "verdict": output.get(
+            "critic_verdict": output.get(
                 "critic_verdict"
             ),
-            "retry": output.get(
+            "retry_count": output.get(
                 "retry_count",
                 0,
             ),
@@ -164,7 +165,7 @@ def extract_metrics(node: str, output: dict):
         )
 
         return {
-            "generated": bool(report),
+            "report_generated": bool(report),
             "length": len(report),
         }
 
@@ -208,6 +209,11 @@ def _process_graph_event(event: dict):
             {},
         )
 
+        # LangGraph may return a list of outputs for some node types;
+        # use the last element as the primary output dict.
+        if isinstance(output, list):
+            output = output[-1] if output else {}
+
         results.append(sse(
             "node_end",
             node=node,
@@ -218,6 +224,33 @@ def _process_graph_event(event: dict):
             progress=NODE_PROGRESS[node],
             message=NODE_MESSAGES[node][1],
         ))
+
+        if node == "conversation":
+            conv_message = None
+            
+            # Only check recent_messages to avoid grabbing old leftover reports
+            val = output.get("recent_messages", [])
+            if isinstance(val, list) and len(val) > 0:
+                last_msg = val[-1]
+                
+                # STRICT CHECK: Make sure the message is actually from the AI
+                # This prevents echoing the user's prompt back to them
+                msg_type = getattr(last_msg, "type", "")
+                msg_role = last_msg.get("role", "") if isinstance(last_msg, dict) else ""
+                
+                if msg_type in ["ai", "assistant"] or msg_role in ["ai", "assistant"]:
+                    if hasattr(last_msg, "content"):
+                        conv_message = last_msg.content
+                    elif isinstance(last_msg, dict):
+                        conv_message = last_msg.get("content", str(last_msg))
+                    else:
+                        conv_message = str(last_msg)
+                
+            if conv_message and isinstance(conv_message, str):
+                results.append(sse(
+                    "message",
+                    content=conv_message
+                ))
 
         if node == "supervisor":
 
@@ -295,20 +328,21 @@ def _process_graph_event(event: dict):
                     message="Retrying analysis...",
                 ))
 
-        if output.get(
-            "final_report"
-        ):
+        if node == "reporter":
+            if output.get(
+                "final_report"
+            ):
 
-            results.append(sse(
-                "report",
-                report=output[
-                    "final_report"
-                ],
-                charts=output.get(
-                    "chart_files",
-                    [],
-                ),
-            ))
+                results.append(sse(
+                    "report",
+                    report=output[
+                        "final_report"
+                    ],
+                    charts=output.get(
+                        "chart_files",
+                        [],
+                    ),
+                ))
 
     # ---------------- ERROR ----------------
 
@@ -328,6 +362,7 @@ async def stream_chat(
     thread_id: str,
     api_key: str | None = None,
     model: str | None = None,
+    dataset_path: str | None = None,
 ):
 
     start = time.perf_counter()
@@ -337,7 +372,7 @@ async def stream_chat(
     # with graph events. This keeps the SSE connection
     # alive during long-running LLM operations.
     # --------------------------------------------------
-    queue: asyncio.Queue = asyncio.Queue()
+    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
     graph_done = asyncio.Event()
 
     # Heartbeat producer: sends heartbeat events at
@@ -356,6 +391,7 @@ async def stream_chat(
                 thread_id,
                 api_key=api_key,
                 model=model,
+                dataset_path=dataset_path,
             ):
                 await queue.put(("graph", event))
         except Exception as e:
@@ -397,6 +433,7 @@ async def stream_chat(
                 yield sse(
                     "error",
                     message=f"Workflow error: {str(item)}",
+                    error_type=type(item).__name__,
                 )
 
     finally:
@@ -414,7 +451,7 @@ async def stream_chat(
     yield sse(
         "complete",
         duration=round(
-            time.perf_counter() - start,
+            (time.perf_counter() - start) * 1000,
             2,
         ),
     )

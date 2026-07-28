@@ -1,6 +1,8 @@
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -11,26 +13,12 @@ from Backend.app.api.session import router as session_router
 from Backend.app.api.upload import router as upload_router
 
 
-# ==========================================================
-# Lifespan
-# ==========================================================
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Startup / Shutdown events.
-    """
-
     print("🚀 DataScribe API Starting...")
-
     yield
-
     print("🛑 DataScribe API Stopped")
 
-
-# ==========================================================
-# FastAPI App
-# ==========================================================
 
 app = FastAPI(
     title="DataScribe API",
@@ -39,89 +27,91 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ==========================================================
-# CORS
-# ==========================================================
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-    ],
+    allow_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    
+    # ==========================================================
+    # RELAXED HEADERS: Only for Interactive HTML Charts
+    # ==========================================================
+    if request.url.path.startswith("/charts/") and request.url.path.endswith(".html"):
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        
+        # Remove X-Frame-Options if it was added by default
+        if "X-Frame-Options" in response.headers:
+            del response.headers["X-Frame-Options"]
+            
+        # Relaxed CSP: Allow Plotly scripts and allow framing
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.plot.ly; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: https: http:; "
+            "frame-ancestors *;"  # <--- Crucial: Allows React iframe to embed this
+        )
+        return response
+
+    # ==========================================================
+    # STRICT HEADERS: For all standard API routes
+    # ==========================================================
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    
+    # Your existing strict CSP
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: https: http:; "
+        "font-src 'self' data:; "
+        "connect-src 'self' https: http:; "
+        "frame-ancestors 'none'; "  # <--- Blocks iframes everywhere else
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+    return response
+
+
 # ==========================================================
-# Static Files
+# Unified Static Files Mounting
 # ==========================================================
 
-import os
+BASE_DIR = Path(__file__).resolve().parent
 
-# Ensure absolute directory resolution so it never fails regardless of where uvicorn is launched
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CHARTS_DIR = os.path.join(BASE_DIR, "charts") # Adjust if charts are inside Backend/charts
+STORAGE_DIR = BASE_DIR / "storage"
+STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
-# If your charts folder is inside Backend/app or root:
-# CHARTS_DIR = os.path.abspath(os.path.join(BASE_DIR, "../charts"))
+# Forcefully point directly to the root-level 'charts' folder regardless of execution context
+CHARTS_DIR = Path(os.path.abspath(os.path.join(os.getcwd(), "charts")))
+CHARTS_DIR.mkdir(parents=True, exist_ok=True)
 
-os.makedirs(CHARTS_DIR, exist_ok=True)
-
-app.mount(
-    "/charts",
-    StaticFiles(directory=CHARTS_DIR),
-    name="charts",
-)
-
-app.mount(
-    "/reports",
-    StaticFiles(directory="Backend/storage/reports"),
-    name="reports",
-)
+app.mount("/storage", StaticFiles(directory=str(STORAGE_DIR)), name="storage")
+app.mount("/charts", StaticFiles(directory=str(CHARTS_DIR)), name="charts")
 
 # ==========================================================
 # Routers
 # ==========================================================
 
-app.include_router(
-    health_router,
-    prefix="/api",
-    tags=["Health"],
-)
+app.include_router(health_router, prefix="/api", tags=["Health"])
+app.include_router(upload_router, prefix="/api", tags=["Upload"])
+app.include_router(chat_router, prefix="/api", tags=["Chat"])
+app.include_router(report_router, prefix="/api", tags=["Reports"])
+app.include_router(session_router, prefix="/api", tags=["Session"])
 
-app.include_router(
-    upload_router,
-    prefix="/api",
-    tags=["Upload"],
-)
-
-app.include_router(
-    chat_router,
-    prefix="/api",
-    tags=["Chat"],
-)
-
-app.include_router(
-    report_router,
-    prefix="/api",
-    tags=["Reports"],
-)
-
-app.include_router(
-    session_router,
-    prefix="/api",
-    tags=["Session"],
-)
-
-# ==========================================================
-# Root
-# ==========================================================
 
 @app.get("/")
 async def root():
-
     return {
         "name": "DataScribe API",
         "version": "1.0.0",

@@ -1,18 +1,22 @@
-import pandas as pd
+import os
 from pathlib import Path
+import pandas as pd
 
-# LangGraph Studio does not guarantee that the server's current working
-# directory is the repository root.  Resolve the bundled sample data relative
-# to this module instead.
-DATA_PATH = Path(__file__).resolve().with_name("sales_data.csv")
+PROJECT_ROOT = Path(__file__).resolve().parent
 
-
-def load_dataframe() -> pd.DataFrame:
-    """Return a new dataset for each graph run instead of sharing mutable state."""
-    return pd.read_csv(DATA_PATH)
-
-
-# Backward compatibility for exploratory scripts. Graph nodes must call
-# `load_dataframe()` so concurrent Studio runs cannot affect each other.
-global_df = load_dataframe()
+def load_dataframe(file_path: str | None = None) -> pd.DataFrame:
+    """Return a new dataset for each graph run.
     
+    Strictly requires a file_path to be provided by the user via the frontend.
+    """
+    if not file_path:
+        raise ValueError("No dataset provided. Please upload a dataset first.")
+        
+    resolved = Path(file_path)
+    if not resolved.is_absolute():
+        resolved = PROJECT_ROOT / resolved
+        
+    if not resolved.exists():
+        raise FileNotFoundError(f"Dataset not found at {resolved}")
+        
+    return pd.read_csv(resolved)

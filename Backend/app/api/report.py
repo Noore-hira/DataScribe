@@ -9,7 +9,8 @@ router = APIRouter()
 @router.get("/report/{filename}")
 async def get_report(filename: str):
 
-    path = Path("storage/reports") / filename
+    safe_filename = Path(filename).name
+    path = Path("storage/reports") / safe_filename
 
     if not path.exists():
 
