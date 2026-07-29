@@ -17,3 +17,4 @@ python-multipart
 openpyxl
 aiofiles
 sse-starlette
+e2b_code_interpreter
