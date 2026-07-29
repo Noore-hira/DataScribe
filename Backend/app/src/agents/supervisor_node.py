@@ -1,6 +1,4 @@
 from typing import Literal
-
-from langchain_classic import hub
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
