@@ -1,12 +1,12 @@
 """
-Small guardrail for model-produced analysis code.
+Lightweight validator for LLM-generated analysis code.
 
-This is NOT a security sandbox.
-
-Its purpose is to reject unsafe code before execution,
-provide actionable feedback for retries,
-and ensure visualization artifacts are saved only inside
-the current run directory.
+E2B Sandbox provides the security isolation.
+This module only enforces analysis workflow rules:
+- valid Python syntax
+- prevent unsupported code patterns
+- normalize visualization outputs
+- keep artifacts inside run directory
 """
 
 from __future__ import annotations
@@ -15,23 +15,7 @@ import ast
 import os
 
 
-# ==========================================================
-# Exception
-# ==========================================================
-
-
 class UnsafeCodeError(ValueError):
-    """
-    Raised when generated code violates execution rules.
-
-    category
-        Machine-readable error category.
-
-    suggestion
-        Actionable feedback that can be forwarded directly
-        to the Critic / Programmer.
-    """
-
     def __init__(
         self,
         category: str,
@@ -43,116 +27,22 @@ class UnsafeCodeError(ValueError):
         super().__init__(message)
 
 
-# ==========================================================
-# Unsafe operations
-# ==========================================================
-
-_BANNED_NAMES = {
-    "open",
-    "exec",
-    "eval",
-    "compile",
-    "input",
-    "__import__",
-    "globals",
-    "locals",
-    "vars",
-    "dir",
-    "getattr",
-    "setattr",
-    "delattr",
-    "help",
-    "breakpoint",
-    "exit",
-    "quit",
-}
-
-
-_BANNED_MODULES = {
-    "os",
-    "sys",
-    "subprocess",
-    "pathlib",
-    "shutil",
-    "tempfile",
-    "socket",
-    "pickle",
-    "joblib",
-}
-
-
-_BANNED_ATTRIBUTES = {
-
-    # Pandas readers
-
-    "read_csv",
-    "read_excel",
-    "read_json",
-    "read_parquet",
-    "read_sql",
-    "read_pickle",
-
-    # Writers (to_csv is allowed for intermediate results;
-    # the execution environment is sandboxed with SAFE_BUILTINS
-    # and does not expose open(), so file writes are limited to
-    # pandas DataFrame methods which are safe in this context)
-
-    "to_excel",
-    "to_pickle",
-    "to_sql",
-    "to_parquet",
-
-    # Filesystem
-
-    "remove",
-    "unlink",
-    "rename",
-    "replace",
-    "mkdir",
-    "makedirs",
-    "rmdir",
-    "rmtree",
-
-    # Process
-
-    "system",
-    "popen",
-    "run",
-
-    # Serialization
-
-    "dump",
-    "load",
-
-    # Network
-
-    "get",
-    "post",
-    "request",
-}
-
-
-_BANNED_NODES = (
-    ast.Import,
-    ast.ImportFrom,
+# Blocked patterns for agent-generated analysis code
+_BLOCKED_NODES = (
+    ast.ClassDef,
     ast.FunctionDef,
     ast.AsyncFunctionDef,
-    ast.ClassDef,
     ast.Lambda,
     ast.Global,
     ast.Nonlocal,
 )
 
 
-_ALLOWED_SAVE_METHODS = {
+_ALLOWED_OUTPUT_METHODS = {
     "savefig",
     "write_html",
     "write_image",
 }
-
-# ---------------------------------------------------------------------
-# Validator
-# ---------------------------------------------------------------------
 
 
 def validate_analysis_code(
@@ -161,219 +51,75 @@ def validate_analysis_code(
     artifact_dir: str | None = None,
 ) -> ast.Module:
     """
-    Validate generated Python code.
+    Validate generated dataframe analysis code.
 
-    This is a guardrail, not a security sandbox.
-
-    Allowed:
-    - imports
-    - helper functions
-    - context managers
-    - plotting
-    - dataframe analysis
-
-    Blocked:
-    - dangerous builtins
-    - dangerous filesystem/process APIs
-    - writing files outside artifact directory
+    E2B handles security.
+    This only enforces agent behavior.
     """
 
-    tree = ast.parse(code, mode="exec")
+    try:
+        tree = ast.parse(code, mode="exec")
 
-    normalized_artifact_dir = None
-
-    if artifact_dir:
-        normalized_artifact_dir = (
-            os.path.normpath(artifact_dir)
-            .replace("\\", "/")
-            .rstrip("/")
+    except SyntaxError as e:
+        raise UnsafeCodeError(
+            "syntax_error",
+            str(e),
+            "Generate valid Python code."
         )
 
     for node in ast.walk(tree):
 
-        # ----------------------------------------------------------
-        # Unsupported syntax
-        # ----------------------------------------------------------
-
-        if isinstance(node, _BANNED_NODES):
-            raise UnsafeCodeError(
-                category="unsupported_syntax",
-                message=f"Unsupported statement: {type(node).__name__}",
-                suggestion=(
-                    "Avoid unsupported Python syntax such as this statement. "
-                    "Rewrite the code using standard sequential Python."
-                ),
-            )
-
-        # ----------------------------------------------------------
-        # Dangerous builtin names
-        # ----------------------------------------------------------
-
+        # Avoid private Python internals
         if isinstance(node, ast.Name):
-
             if node.id.startswith("__"):
                 raise UnsafeCodeError(
-                    category="unsafe_builtin",
-                    message=f"Unsafe name: {node.id}",
-                    suggestion=(
-                        "Do not access Python dunder variables or special "
-                        "builtins."
-                    ),
+                    "private_access",
+                    f"Private name blocked: {node.id}",
+                    "Do not access Python internals."
                 )
 
-            if node.id in _BANNED_NAMES:
-                raise UnsafeCodeError(
-                    category="unsafe_builtin",
-                    message=f"Unsafe builtin: {node.id}",
-                    suggestion=(
-                        f"Do not use '{node.id}'. Use the objects already "
-                        "provided by the execution environment."
-                    ),
-                )
-
-        # ----------------------------------------------------------
-        # Dangerous attributes
-        # ----------------------------------------------------------
 
         if isinstance(node, ast.Attribute):
-
             if node.attr.startswith("__"):
                 raise UnsafeCodeError(
-                    category="unsafe_attribute",
-                    message=f"Unsafe attribute: {node.attr}",
-                    suggestion=(
-                        "Avoid accessing private or dunder attributes."
-                    ),
+                    "private_access",
+                    f"Private attribute blocked: {node.attr}",
+                    "Avoid dunder attributes."
                 )
 
-            if node.attr in _BANNED_ATTRIBUTES:
-                raise UnsafeCodeError(
-                    category="unsafe_attribute",
-                    message=f"Unsafe attribute: {node.attr}",
-                    suggestion=(
-                        f"Do not call '{node.attr}'. "
-                        "Use only safe dataframe analysis and visualization APIs."
-                    ),
-                )
 
-        # ----------------------------------------------------------
-        # Validate write_html / savefig destination
-        # ----------------------------------------------------------
+        # Keep generated code simple
+        if isinstance(node, _BLOCKED_NODES):
+            raise UnsafeCodeError(
+                "unsupported_structure",
+                f"Unsupported syntax: {type(node).__name__}",
+                "Write sequential pandas analysis code."
+            )
 
+
+        # Ensure visualization files have names
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
-            and node.func.attr in {
-                "write_html",
-                "savefig",
-            }
+            and node.func.attr in _ALLOWED_OUTPUT_METHODS
         ):
 
             if artifact_dir is None:
                 raise UnsafeCodeError(
-                    category="artifact_directory",
-                    message="Visualization output directory not configured.",
-                    suggestion=(
-                        "Save charts only after the executor supplies an "
-                        "artifact directory."
-                    ),
+                    "artifact_missing",
+                    "Artifact directory not provided.",
+                    "Save visualizations through the executor."
                 )
 
             if not node.args:
                 raise UnsafeCodeError(
-                    category="artifact_path",
-                    message="Visualization output path missing.",
-                    suggestion=(
-                        "Provide a filename when calling savefig() or "
-                        "write_html()."
-                    ),
+                    "missing_filename",
+                    "Visualization filename missing.",
+                    "Provide an output filename."
                 )
-
-            if (
-                not isinstance(node.args[0], ast.Constant)
-                or not isinstance(node.args[0].value, str)
-            ):
-                raise UnsafeCodeError(
-                    category="artifact_path",
-                    message="Visualization filename must be a string literal.",
-                    suggestion=(
-                        "Pass a literal filename such as "
-                        "'charts/chart_1.png' or 'charts/chart_1.html'."
-                    ),
-                )
-
-            output_path = (
-                os.path.normpath(node.args[0].value)
-                .replace("\\", "/")
-            )
-
-            # Allow any path here because the executor will rewrite it.
-            # Validation only ensures a filename exists.
-
-            if os.path.basename(output_path) == "":
-                raise UnsafeCodeError(
-                    category="artifact_path",
-                    message="Visualization filename is missing.",
-                    suggestion="Provide a filename when saving the visualization.",
-                )
-            
 
     return tree
-# ---------------------------------------------------------------------
-# Safe builtins
-# ---------------------------------------------------------------------
 
-SAFE_BUILTINS = {
-    # Basic types
-    "bool": bool,
-    "int": int,
-    "float": float,
-    "str": str,
-    "list": list,
-    "tuple": tuple,
-    "dict": dict,
-    "set": set,
-
-    # Iteration
-    "len": len,
-    "range": range,
-    "enumerate": enumerate,
-    "zip": zip,
-    "reversed": reversed,
-    "sorted": sorted,
-
-    # Math
-    "sum": sum,
-    "min": min,
-    "max": max,
-    "abs": abs,
-    "round": round,
-    "pow": pow,
-
-    # Utilities
-    "print": print,
-    "any": any,
-    "all": all,
-    "isinstance": isinstance,
-    "type": type,
-
-    # Constructors
-    "slice": slice,
-
-    # Exceptions
-    "Exception": Exception,
-    "ValueError": ValueError,
-    "TypeError": TypeError,
-    "KeyError": KeyError,
-    "IndexError": IndexError,
-
-    # Import support
-    "__import__": __import__,
-}
-
-# ---------------------------------------------------------------------
-# Visualization path normalizer
-# ---------------------------------------------------------------------
 
 
 def normalize_visualization_artifacts(
@@ -381,11 +127,8 @@ def normalize_visualization_artifacts(
     artifact_dir: str,
 ) -> str:
     """
-    Rewrite visualization outputs so every generated chart
-    is saved inside the current artifact directory.
-
-    If the model writes to /tmp, ./foo.html, charts/foo.png, etc.,
-    it is automatically rewritten.
+    Redirect all generated charts/reports
+    into the current E2B run artifact folder.
     """
 
     tree = ast.parse(code, mode="exec")
@@ -394,10 +137,12 @@ def normalize_visualization_artifacts(
         artifact_dir
     ).replace("\\", "/")
 
-    class ArtifactRewriter(ast.NodeTransformer):
+
+    class Rewriter(ast.NodeTransformer):
 
         def __init__(self):
             self.counter = 0
+
 
         def visit_Call(self, node):
 
@@ -406,42 +151,45 @@ def normalize_visualization_artifacts(
             if not isinstance(node.func, ast.Attribute):
                 return node
 
+
             method = node.func.attr
 
+
             if method not in {
+                "savefig",
                 "write_html",
                 "write_image",
-                "write_json",
-                "savefig",
             }:
                 return node
 
+
             self.counter += 1
 
-            extension_map = {
+
+            ext = {
+                "savefig": "png",
                 "write_html": "html",
                 "write_image": "png",
-                "write_json": "json",
-                "savefig": "png",
-            }
+            }[method]
 
-            extension = extension_map[method]
 
             filename = os.path.join(
                 artifact_dir,
-                f"chart_{self.counter}.{extension}",
+                f"chart_{self.counter}.{ext}"
             ).replace("\\", "/")
 
-            literal = ast.Constant(value=filename)
 
             if node.args:
-                node.args[0] = literal
+                node.args[0] = ast.Constant(filename)
             else:
-                node.args.append(literal)
+                node.args.append(
+                    ast.Constant(filename)
+                )
 
             return node
 
-    tree = ArtifactRewriter().visit(tree)
+
+    tree = Rewriter().visit(tree)
 
     ast.fix_missing_locations(tree)
 

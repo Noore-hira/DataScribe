@@ -84,7 +84,7 @@ async def add_security_headers(request: Request, call_next):
 
 
 # ==========================================================
-# Unified Static Files Mounting
+# Static Files
 # ==========================================================
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -92,9 +92,11 @@ BASE_DIR = Path(__file__).resolve().parent
 STORAGE_DIR = BASE_DIR / "storage"
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
-# Forcefully point directly to the root-level 'charts' folder regardless of execution context
-CHARTS_DIR = Path(os.path.abspath(os.path.join(os.getcwd(), "charts")))
+# Executor saves charts here
+CHARTS_DIR = Path(os.getenv("LANGGRAPH_ARTIFACTS_DIR", "/tmp/charts"))
 CHARTS_DIR.mkdir(parents=True, exist_ok=True)
+
+print(f"Serving charts from: {CHARTS_DIR}")
 
 app.mount("/storage", StaticFiles(directory=str(STORAGE_DIR)), name="storage")
 app.mount("/charts", StaticFiles(directory=str(CHARTS_DIR)), name="charts")
@@ -117,4 +119,5 @@ async def root():
         "version": "1.0.0",
         "status": "running",
         "docs": "/docs",
+        "charts_directory": str(CHARTS_DIR),
     }
