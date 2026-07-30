@@ -103,7 +103,9 @@ import plotly.graph_objects as go
 """
 
             final_code = setup + "\n" + code
-
+            logger.info("========== GENERATED CODE ==========")
+            logger.info(final_code)
+            logger.info("===================================")
             ####################################################
             # Execute
             ####################################################
