@@ -307,17 +307,16 @@ def validate_analysis_code(
                 .replace("\\", "/")
             )
 
-            if not output_path.startswith(
-                normalized_artifact_dir + "/"
-            ):
+            # Allow any path here because the executor will rewrite it.
+            # Validation only ensures a filename exists.
+
+            if os.path.basename(output_path) == "":
                 raise UnsafeCodeError(
                     category="artifact_path",
-                    message="Charts must be written inside the artifact directory.",
-                    suggestion=(
-                        "Save every chart inside the provided artifact directory. "
-                        "Do not write files elsewhere."
-                    ),
+                    message="Visualization filename is missing.",
+                    suggestion="Provide a filename when saving the visualization.",
                 )
+            
 
     return tree
 # ---------------------------------------------------------------------
@@ -385,13 +384,8 @@ def normalize_visualization_artifacts(
     Rewrite visualization outputs so every generated chart
     is saved inside the current artifact directory.
 
-    Supported methods
-
-    - fig.write_html(...)
-    - fig.write_image(...)
-    - fig.write_json(...)
-    - plt.savefig(...)
-    - fig.savefig(...)
+    If the model writes to /tmp, ./foo.html, charts/foo.png, etc.,
+    it is automatically rewritten.
     """
 
     tree = ast.parse(code, mode="exec")
@@ -424,18 +418,19 @@ def normalize_visualization_artifacts(
 
             self.counter += 1
 
-            if method == "write_html":
-                extension = "html"
+            extension_map = {
+                "write_html": "html",
+                "write_image": "png",
+                "write_json": "json",
+                "savefig": "png",
+            }
 
-            elif method == "write_json":
-                extension = "json"
+            extension = extension_map[method]
 
-            else:
-                extension = "png"
-
-            filename = (
-                f"{artifact_dir}/chart_{self.counter}.{extension}"
-            )
+            filename = os.path.join(
+                artifact_dir,
+                f"chart_{self.counter}.{extension}",
+            ).replace("\\", "/")
 
             literal = ast.Constant(value=filename)
 
