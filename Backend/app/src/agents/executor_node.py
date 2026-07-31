@@ -141,55 +141,6 @@ import plotly.graph_objects as go
             )
 
             ####################################################
-            # Save inline results
-            ####################################################
-
-            for i, result in enumerate(execution.results):
-
-                if getattr(result, "png", None):
-
-                    filename = f"chart_{i}.png"
-
-                    with open(
-                        os.path.join(
-                            artifact_dir,
-                            filename,
-                        ),
-                        "wb",
-                    ) as f:
-
-                        f.write(
-                            base64.b64decode(result.png)
-                        )
-
-                    chart_files.append(filename)
-
-                    logger.info(
-                        f"Saved inline PNG -> {filename}"
-                    )
-
-                if getattr(result, "html", None):
-
-                    filename = f"chart_{i}.html"
-
-                    with open(
-                        os.path.join(
-                            artifact_dir,
-                            filename,
-                        ),
-                        "w",
-                        encoding="utf-8",
-                    ) as f:
-
-                        f.write(result.html)
-
-                    chart_files.append(filename)
-
-                    logger.info(
-                        f"Saved inline HTML -> {filename}"
-                    )
-
-            ####################################################
             # Scan sandbox filesystem
             ####################################################
 
@@ -234,14 +185,14 @@ import plotly.graph_objects as go
                     )
 
                     try:
-                        data = sandbox.files.read(file.path)
-
                         local_path = os.path.join(
                             artifact_dir,
                             file.name,
                         )
 
                         if name.endswith(".html"):
+                            # Read HTML files as standard text
+                            data = sandbox.files.read(file.path)
 
                             if isinstance(data, bytes):
                                 data = data.decode("utf-8")
@@ -251,19 +202,16 @@ import plotly.graph_objects as go
                                 "w",
                                 encoding="utf-8",
                             ) as f:
-
                                 f.write(data)
 
                         else:
+                            # CRITICAL FIX: Read images as raw binary bytes
+                            data = sandbox.files.read_bytes(file.path)
 
                             with open(
                                 local_path,
                                 "wb",
                             ) as f:
-
-                                if isinstance(data, str):
-                                    data = data.encode()
-
                                 f.write(data)
 
                         downloaded.add(file.name)
