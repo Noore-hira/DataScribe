@@ -194,7 +194,7 @@ import plotly.graph_objects as go
                             # Read HTML files as standard text
                             data = sandbox.files.read(file.path)
 
-                            if isinstance(data, bytes):
+                            if isinstance(data, (bytes, bytearray)):
                                 data = data.decode("utf-8")
 
                             with open(
@@ -205,8 +205,12 @@ import plotly.graph_objects as go
                                 f.write(data)
 
                         else:
-                            # CRITICAL FIX: Read images as raw binary bytes
-                            data = sandbox.files.read_bytes(file.path)
+                            # CRITICAL FIX: Read images as raw binary bytes using format="bytes"
+                            data = sandbox.files.read(file.path, format="bytes")
+
+                            # E2B SDK can return a bytearray, cast to standard bytes to safely write
+                            if isinstance(data, bytearray):
+                                data = bytes(data)
 
                             with open(
                                 local_path,
