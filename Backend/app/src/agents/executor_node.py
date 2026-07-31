@@ -40,9 +40,9 @@ def executor_node(state: GraphState) -> GraphState:
         }
 
     artifact_dir = os.environ.get(
-        "LANGGRAPH_ARTIFACTS_DIR",
-        "charts",
-    )
+            "LANGGRAPH_ARTIFACTS_DIR",
+            "/tmp/charts", 
+        )
 
     os.makedirs(artifact_dir, exist_ok=True)
 
