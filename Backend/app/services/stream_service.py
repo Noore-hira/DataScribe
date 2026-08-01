@@ -180,16 +180,22 @@ def _process_graph_event(event: dict):
     """
     event_type = event.get("event")
     node = event.get("name")
+    
+    # LangGraph attaches tags to inner events. This is how we know which 
+    # agent is currently generating the token (e.g., 'reporter' or 'programmer')
+    tags = event.get("tags", [])
 
-    if node not in GRAPH_NODES:
+    # Allow chat model streams through even if their 'name' is the LLM model name (like "ChatGroq")
+    is_stream = (event_type == "on_chat_model_stream")
+
+    if not is_stream and node not in GRAPH_NODES:
         return []
 
     results = []
 
     # ---------------- START ----------------
 
-    if event_type == "on_chain_start":
-
+    if event_type == "on_chain_start" and node in GRAPH_NODES:
         results.append(sse(
             "node_start",
             node=node,
@@ -199,42 +205,25 @@ def _process_graph_event(event: dict):
 
     # ---------------- END ----------------
 
-    elif event_type == "on_chain_end":
+    elif event_type == "on_chain_end" and node in GRAPH_NODES:
+        output = event.get("data", {}).get("output", {})
 
-        output = event.get(
-            "data",
-            {},
-        ).get(
-            "output",
-            {},
-        )
-
-        # LangGraph may return a list of outputs for some node types;
-        # use the last element as the primary output dict.
         if isinstance(output, list):
             output = output[-1] if output else {}
 
         results.append(sse(
             "node_end",
             node=node,
-            metrics=extract_metrics(
-                node,
-                output,
-            ),
+            metrics=extract_metrics(node, output),
             progress=NODE_PROGRESS[node],
             message=NODE_MESSAGES[node][1],
         ))
 
         if node == "conversation":
             conv_message = None
-            
-            # Only check recent_messages to avoid grabbing old leftover reports
             val = output.get("recent_messages", [])
             if isinstance(val, list) and len(val) > 0:
                 last_msg = val[-1]
-                
-                # STRICT CHECK: Make sure the message is actually from the AI
-                # This prevents echoing the user's prompt back to them
                 msg_type = getattr(last_msg, "type", "")
                 msg_role = last_msg.get("role", "") if isinstance(last_msg, dict) else ""
                 
@@ -253,106 +242,61 @@ def _process_graph_event(event: dict):
                 ))
 
         if node == "supervisor":
-
-            results.append(sse(
-                "decision",
-                decision=output.get(
-                    "supervisor_decision"
-                ),
-            ))
+            results.append(sse("decision", decision=output.get("supervisor_decision")))
 
         if node == "planner":
-
-            results.append(sse(
-                "plan",
-                plan=output.get(
-                    "plan",
-                    "",
-                ),
-            ))
+            results.append(sse("plan", plan=output.get("plan", "")))
 
         if node == "programmer":
-
-            results.append(sse(
-                "code",
-                code=output.get(
-                    "generated_code",
-                    "",
-                ),
-            ))
+            results.append(sse("code", code=output.get("generated_code", "")))
 
         if node == "executor":
-
-            results.append(sse(
-                "execution",
-                output=output.get(
-                    "execution_output",
-                    "",
-                ),
-            ))
-
+            results.append(sse("execution", output=output.get("execution_output", "")))
             if output.get("chart_files"):
-
-                results.append(sse(
-                    "charts",
-                    charts=output.get(
-                        "chart_files",
-                        [],
-                    ),
-                ))
+                results.append(sse("charts", charts=output.get("chart_files", [])))
 
         if node == "critic":
-
             results.append(sse(
                 "critic",
-                verdict=output.get(
-                    "critic_verdict"
-                ),
-                retry=output.get(
-                    "retry_count",
-                    0,
-                ),
+                verdict=output.get("critic_verdict"),
+                retry=output.get("retry_count", 0),
             ))
-
-            if output.get(
-                "critic_verdict"
-            ) == "fail":
-
+            if output.get("critic_verdict") == "fail":
                 results.append(sse(
                     "retry",
-                    retry_count=output.get(
-                        "retry_count",
-                        0,
-                    ),
+                    retry_count=output.get("retry_count", 0),
                     next_node="programmer",
                     message="Retrying analysis...",
                 ))
 
         if node == "reporter":
-            if output.get(
-                "final_report"
-            ):
-
+            if output.get("final_report"):
                 results.append(sse(
                     "report",
-                    report=output[
-                        "final_report"
-                    ],
-                    charts=output.get(
-                        "chart_files",
-                        [],
-                    ),
+                    report=output["final_report"],
+                    charts=output.get("chart_files", []),
                 ))
 
     # ---------------- ERROR ----------------
 
-    elif event_type == "on_chain_error":
-
+    elif event_type == "on_chain_error" and node in GRAPH_NODES:
         results.append(sse(
             "error",
             node=node,
             message="Node execution failed.",
         ))
+        
+    # ---------------- REAL-TIME TOKEN STREAMING ----------------
+
+    elif is_stream:
+        chunk = event.get("data", {}).get("chunk")
+        if chunk and hasattr(chunk, "content") and chunk.content:
+            # 🛠️ STRICTLY filter to ONLY allow the reporter node to stream tokens
+            if "reporter" in tags:
+                results.append(sse(
+                    "token",
+                    content=chunk.content
+                ))
 
     return results
 

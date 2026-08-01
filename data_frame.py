@@ -19,4 +19,14 @@ def load_dataframe(file_path: str | None = None) -> pd.DataFrame:
     if not resolved.exists():
         raise FileNotFoundError(f"Dataset not found at {resolved}")
         
-    return pd.read_csv(resolved)
+    # Dynamically check the file extension
+    ext = resolved.suffix.lower()
+    
+    if ext == ".csv":
+        return pd.read_csv(resolved)
+    elif ext in [".xlsx", ".xls"]:
+        return pd.read_excel(resolved, engine="openpyxl")
+    elif ext == ".parquet":
+        return pd.read_parquet(resolved)
+    else:
+        raise ValueError(f"Unsupported dataset format: {ext}. Please provide a CSV, Excel, or Parquet file.")
