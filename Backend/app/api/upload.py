@@ -7,13 +7,16 @@ from fastapi import APIRouter, File, UploadFile, HTTPException
 
 router = APIRouter()
 
-UPLOAD_DIR = Path("storage/uploads")
+# 🛠️ ADDED .resolve() HERE!
+# This locks in the exact system path (e.g., /app/Backend/storage/uploads)
+# instead of relying on the relative directory.
+UPLOAD_DIR = Path("storage/uploads").resolve()
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @router.post("/upload")
 async def upload_dataset(
-    file: UploadFile = File(...), # <-- Removed max_length here
+    file: UploadFile = File(...),
 ):
     # --- NEW: Safely check the file size (25 MB limit) ---
     MAX_SIZE = 25 * 1024 * 1024
@@ -63,7 +66,8 @@ async def upload_dataset(
 
     return {
         "filename": file.filename,
-        "path": str(save_path),
+        # 🛠️ Because of .resolve(), this will now send the ABSOLUTE path to the frontend!
+        "path": str(save_path), 
         "status": "uploaded",
         "rows": len(df),
         "columns": len(df.columns),
