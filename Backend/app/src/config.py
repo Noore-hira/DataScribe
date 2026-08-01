@@ -18,6 +18,7 @@ def get_llm(api_key: str, model: str | None = None, max_retries: int | None = No
         "model": mdl,
         "temperature": 0.1,
         "api_key": api_key,
+        "streaming": True, #  ADDED THIS! Now the LLM will stream tokens!
     }
 
     if max_retries is not None:

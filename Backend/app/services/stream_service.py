@@ -290,9 +290,12 @@ def _process_graph_event(event: dict):
 
     elif is_stream:
         chunk = event.get("data", {}).get("chunk")
+        # 🛠️ In v2, LangGraph stores the current node name here!
+        metadata = event.get("metadata", {})
+        current_node = metadata.get("langgraph_node", "")
         if chunk and hasattr(chunk, "content") and chunk.content:
             # 🛠️ STRICTLY filter to ONLY allow the reporter node to stream tokens
-            if "reporter" in tags:
+            if current_node == "reporter":
                 results.append(sse(
                     "token",
                     content=chunk.content

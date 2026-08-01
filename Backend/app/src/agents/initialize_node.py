@@ -1,6 +1,6 @@
 import io
 
-from data_frame import load_dataframe
+from Backend.app.src.data_frame import load_dataframe
 from Backend.app.src.graph.state import GraphState
 from Backend.app.src.logs.logger import logger
 
