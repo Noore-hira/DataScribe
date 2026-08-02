@@ -142,6 +142,7 @@ The successfully generated outputs have been included in this report.
     memory_updates = update_analysis_memory(
         state,
         report,
+        config
     )
 
     logger.info("Final report generated.")
