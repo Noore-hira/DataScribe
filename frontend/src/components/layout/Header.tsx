@@ -1,9 +1,6 @@
 import { motion } from 'framer-motion';
 import { PanelRight, Sparkles } from 'lucide-react';
 import { Logo } from '@/components/common/Logo';
-import { ConnectionIndicator } from '@/components/common/ConnectionIndicator';
-import { useConnectionStatus } from '@/hooks/use-connection-status';
-import { useSettings } from '@/contexts/SettingsContext';
 import { cn } from '@/lib/utils';
 
 interface HeaderProps {
@@ -12,9 +9,6 @@ interface HeaderProps {
 }
 
 export function Header({ onToggleRightPanel, rightPanelOpen }: HeaderProps) {
-  const { backendUrl } = useSettings();
-  const health = useConnectionStatus(backendUrl);
-
   return (
     <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border/60 bg-background/70 px-4 backdrop-blur sm:px-6">
       <div className="flex items-center gap-3">
@@ -30,7 +24,6 @@ export function Header({ onToggleRightPanel, rightPanelOpen }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        <ConnectionIndicator health={health} checking={health.checkedAt === 0} compact={false} />
         <motion.button
           whileTap={{ scale: 0.95 }}
           onClick={onToggleRightPanel}
@@ -51,8 +44,6 @@ export function Header({ onToggleRightPanel, rightPanelOpen }: HeaderProps) {
 }
 
 export function ChatHeaderMinimal() {
-  const { backendUrl } = useSettings();
-  const health = useConnectionStatus(backendUrl);
   return (
     <div className="flex items-center justify-between px-1 pb-3">
       <div className="flex items-center gap-2">
@@ -64,7 +55,6 @@ export function ChatHeaderMinimal() {
           · Multi-Agent AI Data Analysis Platform
         </span>
       </div>
-      <ConnectionIndicator health={health} checking={health.checkedAt === 0} compact />
     </div>
   );
 }

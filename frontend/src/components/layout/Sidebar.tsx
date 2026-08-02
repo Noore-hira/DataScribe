@@ -35,9 +35,8 @@ const NAV = [
 export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { threadId, dataset, startNewSession} = useSession();
+  const { threadId, dataset, startNewSession } = useSession();
   const { backendUrl } = useSettings();
-  const [settingsOpen, setSettingsOpen] = useState(true);
 
   const effectiveUrl = (backendUrl || DEFAULT_BACKEND_URL).replace(/\/$/, '');
 
@@ -77,7 +76,6 @@ export function Sidebar({ collapsed, onToggleCollapse }: SidebarProps) {
 
   return (
     <aside className="flex h-full w-72 flex-col border-r border-border/60 bg-card/40 backdrop-blur">
-      {/* Header / Collapse Action Only */}
       <div className="flex items-center justify-end p-4">
         <button
           onClick={onToggleCollapse}
@@ -188,7 +186,6 @@ function Section({
     <div className="mb-4">
       <button
         onClick={() => setOpen((o) => !o)}
-        // 🛠️ Changed text-muted-foreground/70 to text-foreground font-semibold (or text-gold-400)
         className="mb-2 flex w-full items-center justify-between text-[11px] font-bold uppercase tracking-wider text-foreground transition-colors hover:text-gold-400"
       >
         {title}
