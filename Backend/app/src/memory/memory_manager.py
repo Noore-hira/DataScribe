@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig  # 1. Added import for secure config
 
 from Backend.app.src.config import get_llm
 from Backend.app.src.graph.state import GraphState
+from Backend.app.src.logs.logger import logger
+from langsmith import Client
+from dotenv import load_dotenv
 
+load_dotenv()
+client = Client()
 
 # ==========================================================
 # Prompts
@@ -198,9 +204,11 @@ def update_conversation_memory(
 # Analysis Memory
 # ==========================================================
 
+# 2. Added config: RunnableConfig to the parameters
 def update_analysis_memory(
     state: GraphState,
     report: str,
+    config: RunnableConfig, 
 ) -> dict:
     """
     Update long-term memory after a completed analysis.
@@ -208,8 +216,8 @@ def update_analysis_memory(
 
     user_query = state["user_query"]
     
-    # Extract API credentials from the state
-    api_key = state.get("api_key")
+    # 3. Extract API credentials SECURELY from the config, not the state
+    api_key = config.get("configurable", {}).get("api_key")
     model = state.get("model")
 
     execution_output = state.get(

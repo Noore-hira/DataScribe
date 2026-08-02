@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig  # 1. Added import for secure config
 
 from Backend.app.src.config import get_llm
 from Backend.app.src.graph.state import GraphState
@@ -30,9 +31,13 @@ class ConversationDecision(BaseModel):
 
 SYSTEM_PROMPT = client.pull_prompt("con_sp").format()
 
-def conversation_node(state: GraphState):
+# 2. Added config: RunnableConfig to the parameters
+def conversation_node(state: GraphState, config: RunnableConfig):
 
     logger.info("Conversation agent started.")
+
+    # 3. Extract the API key SECURELY from the config, not the state
+    api_key = config.get("configurable", {}).get("api_key")
 
     user_query = state["user_query"]
 
@@ -70,7 +75,8 @@ Recent Conversation
 {recent_messages}
 """
 
-    router = get_llm(state.get("api_key"), state.get("model")).with_structured_output(
+    # 4. Pass the securely extracted api_key to your LLM configuration
+    router = get_llm(api_key, state.get("model")).with_structured_output(
         ConversationDecision
     )
 

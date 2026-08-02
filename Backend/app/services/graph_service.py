@@ -1,4 +1,5 @@
 from Backend.app.src.graph.graph_workflow import app
+from langchain_core.runnables import RunnableConfig
 
 
 async def run_graph(
@@ -9,25 +10,25 @@ async def run_graph(
     dataset_path: str | None = None,
 ):
     """
-    Runs the LangGraph workflow and yields raw LangGraph events.
+    Runs the LangGraph workflow and yields raw LangGraph events securely.
     """
 
-    config = {
+    # 1. Put the api_key in `configurable`. 
+    # LangSmith NEVER logs the contents of `configurable` in state traces.
+    config: RunnableConfig = {
         "configurable": {
             "thread_id": thread_id,
             "api_key": api_key,
             "model": model,
-            "dataset_path": dataset_path, # <-- Added this!
+            "dataset_path": dataset_path,
         }
     }
 
+    # 2. Build initial_state WITHOUT the api_key
     initial_state = {
         "user_query": user_query,
     }
 
-    # You are also injecting these into the state, which is great!
-    if api_key:
-        initial_state["api_key"] = api_key
     if model:
         initial_state["model"] = model
     if dataset_path:

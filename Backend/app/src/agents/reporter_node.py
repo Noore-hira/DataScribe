@@ -1,6 +1,7 @@
 import os
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig  # 1. Added import for secure config
 
 from Backend.app.src.config import get_llm
 from Backend.app.src.graph.state import GraphState
@@ -15,9 +16,13 @@ client = Client()
 
 SYSTEM_PROMPT = client.pull_prompt("reporter_sp").format()
 
-def reporter_node(state: GraphState) -> GraphState:
+# 2. Added config: RunnableConfig to the parameters
+def reporter_node(state: GraphState, config: RunnableConfig) -> GraphState:
 
     logger.info("Reporter started.")
+
+    # 3. Extract the API key SECURELY from the config, not the state
+    api_key = config.get("configurable", {}).get("api_key")
 
     if state.get("fatal_error"):
         return {
@@ -68,8 +73,8 @@ Critic Feedback
 """
 
     try:
-
-        response = get_llm(state.get("api_key"), state.get("model")).invoke(
+        # 4. Pass the securely extracted api_key to your LLM configuration
+        response = get_llm(api_key, state.get("model")).invoke(
             [
                 SystemMessage(content=SYSTEM_PROMPT),
                 HumanMessage(content=user_prompt),

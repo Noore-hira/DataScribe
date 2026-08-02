@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, ValidationError
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig  # 1. Added import for secure config
 
 from Backend.app.src.config import get_llm
 from Backend.app.src.graph.state import GraphState
@@ -70,7 +71,7 @@ Rules
 # ==========================================================
 
 @retry(
-    stop=stop_after_attempt(3),
+    stop=stop_after_attempt(2),
     wait=wait_fixed(1),
     reraise=True,
 )
@@ -128,9 +129,13 @@ def generate_plan(messages, llm_instance) -> ExecutionPlan:
 # Planner Node
 # ==========================================================
 
-def planner_node(state: GraphState) -> GraphState:
+# 2. Added config: RunnableConfig to the parameters
+def planner_node(state: GraphState, config: RunnableConfig) -> GraphState:
 
     logger.info("Planner started.")
+    
+    # 3. Extract the API key SECURELY from the config, not the state
+    api_key = config.get("configurable", {}).get("api_key")
 
     user_query = require_state(state, "user_query")
     schema = require_state(state, "df_schema")
@@ -164,7 +169,8 @@ Current Execution Plan
 """
                 ),
             ],
-            get_llm(state.get("api_key"), state.get("model")),
+            # 4. Pass the securely extracted api_key to your LLM configuration
+            get_llm(api_key, state.get("model")),
         )
 
     except Exception as exc:

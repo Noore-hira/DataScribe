@@ -1,4 +1,5 @@
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig  # 1. Add this import
 
 from Backend.app.src.config import get_llm
 from Backend.app.src.graph.state import GraphState
@@ -11,8 +12,13 @@ load_dotenv()
 client = Client()
 
 SYSTEM_PROMPT = client.pull_prompt("programmer_sp").format()
-def programmer_node(state: GraphState) -> GraphState:
+
+# 2. Add config: RunnableConfig as the second parameter
+def programmer_node(state: GraphState, config: RunnableConfig) -> GraphState:
     logger.info("Programmer Agent started.")
+
+    # 3. Extract the API key SECURELY from the config, not the state
+    api_key = config.get("configurable", {}).get("api_key")
 
     prompt = f"""
 User Request
@@ -48,7 +54,8 @@ Update ONLY the failing parts.
 Do not rewrite the entire program unless necessary.
 """
 
-    response = get_llm(state.get("api_key"), "openai/gpt-oss-120b" , max_retries=2).invoke(
+    # 4. Pass the securely extracted api_key to your LLM configuration
+    response = get_llm(api_key, "openai/gpt-oss-120b", max_retries=2).invoke(
         [
             SystemMessage(content=SYSTEM_PROMPT),
             HumanMessage(content=prompt),
@@ -78,8 +85,7 @@ Do not rewrite the entire program unless necessary.
         "generated_code": code,
         "agent_output": response.content,
         "programmer_metrics": {
-
             "lines": len(code.splitlines()),
             "characters": len(code)
-            }
+        }
     }

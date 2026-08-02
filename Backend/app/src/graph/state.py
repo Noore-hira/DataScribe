@@ -21,7 +21,6 @@ class GraphState(TypedDict, total=False):
     user_query: str
 
     # LLM configuration (per-request, from frontend)
-    api_key: NotRequired[str]
     model: NotRequired[str]
 
     # Route chosen by Conversation Agent

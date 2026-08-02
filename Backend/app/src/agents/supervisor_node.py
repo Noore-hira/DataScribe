@@ -1,5 +1,6 @@
 from typing import Literal
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig  # 1. Added import for secure config
 from pydantic import BaseModel, Field
 
 from Backend.app.src.config import get_llm
@@ -34,14 +35,14 @@ Briefly explain why the report fully satisfies the request.
 """
     )
 
-from langsmith import Client
-
-client = Client()
-
 SYSTEM_PROMPT = client.pull_prompt("sup_sp").format()
 
-def supervisor_node(state: GraphState) -> GraphState:
+# 2. Added config: RunnableConfig to the parameters
+def supervisor_node(state: GraphState, config: RunnableConfig) -> GraphState:
     logger.info("Supervisor evaluating workflow.")
+
+    # 3. Extract the API key SECURELY from the config, not the state
+    api_key = config.get("configurable", {}).get("api_key")
 
     review_count = state.get("supervisor_review_count", 0)
     max_reviews = state.get("max_supervisor_reviews", 2)
@@ -104,8 +105,8 @@ REPORTER OUTPUT
 """
 
     try:
-
-        router = get_llm(state.get("api_key"), state.get("model")).with_structured_output(SupervisorDecision)
+        # 4. Pass the securely extracted api_key to your LLM configuration
+        router = get_llm(api_key, state.get("model")).with_structured_output(SupervisorDecision)
 
         decision = router.invoke(
             [

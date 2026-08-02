@@ -2,6 +2,7 @@ import json
 from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig  # 1. Added import for secure config
 from pydantic import BaseModel, Field
 from tenacity import retry, stop_after_attempt, wait_fixed
 
@@ -68,7 +69,7 @@ SYSTEM_PROMPT = client.pull_prompt("critic_sp").format()
 # --------------------------------------------------------
 
 @retry(
-    stop=stop_after_attempt(3),
+    stop=stop_after_attempt(2),
     wait=wait_fixed(1),
 )
 def review_execution(review: str, llm_instance) -> CriticVerdict:
@@ -111,9 +112,13 @@ def review_execution(review: str, llm_instance) -> CriticVerdict:
 # Node
 # --------------------------------------------------------
 
-def critic_node(state: GraphState) -> GraphState:
+# 2. Added config: RunnableConfig to the parameters
+def critic_node(state: GraphState, config: RunnableConfig) -> GraphState:
 
     logger.info("Critic started.")
+    
+    # 3. Extract the API key SECURELY from the config, not the state
+    api_key = config.get("configurable", {}).get("api_key")
 
     retry_count = state.get("retry_count", 0)
     max_retries = state.get("max_retries", 2)
@@ -196,8 +201,8 @@ Generated Charts
     # ----------------------------------------------------
 
     try:
-
-        verdict = review_execution(review, get_llm(state.get("api_key"), state.get("model")))
+        # 4. Pass the securely extracted api_key to your LLM configuration
+        verdict = review_execution(review, get_llm(api_key, state.get("model")))
 
     except Exception:
 
