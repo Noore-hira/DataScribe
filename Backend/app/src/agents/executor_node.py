@@ -238,11 +238,17 @@ import plotly.graph_objects as go
                 f"Saved {len(chart_files)} charts."
             )
 
+            # 🛠️ CRITICAL FIX: E2B stores print() outputs in logs.stdout
+            stdout_logs = "\n".join(execution.logs.stdout) if execution.logs and execution.logs.stdout else ""
+            
+            # Optionally capture text-based results (like pandas dataframe HTML/text representations)
+            result_texts = "\n".join([res.text for res in execution.results if getattr(res, 'text', None)])
+            
+            combined_output = f"{stdout_logs}\n{result_texts}".strip()
+
             return {
                 "execution_status": "success",
-                "execution_output": execution.text.strip()
-                if execution.text
-                else "",
+                "execution_output": combined_output,
                 "execution_error": "",
                 "chart_files": chart_files,
                 "executor_metrics": {
