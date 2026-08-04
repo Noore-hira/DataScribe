@@ -47,8 +47,6 @@ def initialize_node(state: GraphState) -> GraphState:
 
         # Supervisor
         "supervisor_decision": None,
-        "supervisor_review_count": 0,
-        "max_supervisor_reviews": 2,
 
         # Programmer
         "generated_code": "",

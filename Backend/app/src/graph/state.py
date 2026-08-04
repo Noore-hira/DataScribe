@@ -1,7 +1,6 @@
 from typing import Annotated, Literal
 
 from typing_extensions import NotRequired, TypedDict
-
 from langgraph.graph.message import add_messages
 
 
@@ -54,7 +53,7 @@ class GraphState(TypedDict, total=False):
     dataset_name: NotRequired[str]
     dataset_summary: NotRequired[str]
 
-    # Path to the uploaded dataset file (relative to project root or absolute)
+    # Path to the uploaded dataset file
     dataset_path: NotRequired[str]
 
     # =====================================================
@@ -74,10 +73,6 @@ class GraphState(TypedDict, total=False):
     ]
 
     supervisor_feedback: NotRequired[str]
-
-    supervisor_review_count: NotRequired[int]
-
-    max_supervisor_reviews: NotRequired[int]
 
     # =====================================================
     # Programmer
@@ -105,16 +100,12 @@ class GraphState(TypedDict, total=False):
     chart_files: NotRequired[list[str]]
 
     # =====================================================
-    # Retry
+    # Critic
     # =====================================================
 
     retry_count: NotRequired[int]
 
     max_retries: NotRequired[int]
-
-    # =====================================================
-    # Critic
-    # =====================================================
 
     critic_verdict: NotRequired[
         Literal[
