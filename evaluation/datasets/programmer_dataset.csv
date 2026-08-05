@@ -1,21 +1,1381 @@
-id,difficulty,user_query,execution_plan,df_schema
-1,Hard,Complete exploratory data analysis,"Analysis: Dataset overview, Missing values, Duplicates, Statistics | Visualization: Histogram, Boxplot","Columns: Multiple mixed columns"
-2,Hard,Correlation analysis with heatmap,"Statistics: Correlation matrix | Visualization: Heatmap","Columns: Numerical columns"
-3,Medium,Average sales by region,"Statistics: Groupby mean | Visualization: Bar chart","Columns: Region(str), Sales(float)"
-4,Medium,Distribution of customer ages,"Statistics: Summary | Visualization: Histogram","Columns: Age(int)"
-5,Medium,Detect outliers in Salary,"Analysis: Outlier detection | Visualization: Boxplot","Columns: Salary(float)"
-6,Hard,Revenue trends by region and category,"Statistics: Groupby | Visualization: Multi-line chart","Columns: Region, Category, Revenue, Date"
-7,Hard,Weekly revenue dashboard,"Statistics: Weekly aggregation | Visualization: Dashboard","Columns: Date, Revenue"
-8,Hard,Time series analysis,"Statistics: Rolling average | Visualization: Line chart","Columns: Date, Sales"
-9,Hard,Customer demographics report,"Analysis: Summary | Visualization: Histogram, Pie","Columns: Age, Gender, Income"
-10,Hard,Employee salary analysis,"Statistics: Groupby | Visualization: Boxplot","Columns: Department, Salary"
-11,Hard,Compare product categories,"Statistics: Groupby | Visualization: Bar chart","Columns: Product, Category, Sales"
-12,Hard,Regional performance report,"Statistics: Aggregations | Visualization: Bar, Map","Columns: Region, Sales"
-13,Hard,Profit margin analysis,"Statistics: Margin calculation | Visualization: Scatter","Columns: Revenue, Cost"
-14,Hard,Yearly sales growth,"Statistics: Growth rate | Visualization: Line chart","Columns: Year, Sales"
-15,Hard,Inventory analysis,"Statistics: Summary | Visualization: Bar","Columns: Stock, Product"
-16,Easy,Calculate median age,"Statistics: Median age","Columns: Age(int)"
-17,Easy,Find maximum sales,"Statistics: Maximum sales","Columns: Sales(float)"
-18,Easy,Find minimum sales,"Statistics: Minimum sales","Columns: Sales(float)"
-19,Hard,Student performance analysis,"Statistics: Correlation | Visualization: Heatmap","Columns: Math, Science, English"
-20,Hard,Financial portfolio analysis,"Statistics: Risk metrics | Visualization: Line chart","Columns: Asset, Return, Date"
+user_query,df_schema,plan,expected_code
+give me insights from dataset,"[class]
+RangeIndex: 1000 entries, 0 to 999
+Data columns (total 14 columns):
+Column                Non-Null Count  Dtype
+0   Product_ID            1000 non-null   int64
+1   Sale_Date             1000 non-null   str
+2   Sales_Rep             1000 non-null   str
+3   Region                1000 non-null   str
+4   Sales_Amount          1000 non-null   float64
+5   Quantity_Sold         1000 non-null   int64
+6   Product_Category      1000 non-null   str
+7   Unit_Cost             1000 non-null   float64
+8   Unit_Price            1000 non-null   float64
+9   Customer_Type         1000 non-null   str
+10  Discount              1000 non-null   float64
+11  Payment_Method        1000 non-null   str
+12  Sales_Channel         1000 non-null   str
+13  Region_and_Sales_Rep  1000 non-null   str
+
+dtypes: float64(4), int64(2), str(8)
+memory usage: 109.5 KB
+
+Null Count:
+Product_ID              0
+Sale_Date               0
+Sales_Rep               0
+Region                  0
+Sales_Amount            0
+Quantity_Sold           0
+Product_Category        0
+Unit_Cost               0
+Unit_Price              0
+Customer_Type           0
+Discount                0
+Payment_Method          0
+Sales_Channel           0
+Region_and_Sales_Rep    0","Summary: Provide insights from the dataset
+
+Analysis Tasks:
+- Summary statistics for Sales_Amount and Quantity_Sold
+- Distribution of Sales_Amount by Region
+- Top-selling Products by Sales_Amount
+- Correlation between Unit_Cost and Unit_Price
+- Sales_Amount by Customer_Type and Payment_Method
+
+Statistical Tasks:
+- Mean and standard deviation of Sales_Amount
+- Median and interquartile range of Quantity_Sold
+
+Visualization Tasks:
+- Bar chart for top-selling Products by Sales_Amount
+- Scatter plot for correlation between Unit_Cost and Unit_Price
+- Pie chart for Sales_Amount by Customer_Type
+
+Execution Order: Analysis → Visualization","df = global_df.copy()
+
+# Convert date column to datetime for potential future use
+if df['Sale_Date'].dtype == object:
+    df['Sale_Date'] = pd.to_datetime(df['Sale_Date'], errors='coerce')
+
+# Ensure numeric columns are proper dtype
+numeric_cols = ['Sales_Amount', 'Quantity_Sold', 'Unit_Cost', 'Unit_Price', 'Discount', 'Product_ID']
+for col in numeric_cols:
+    df[col] = pd.to_numeric(df[col], errors='coerce')
+
+# 1. Mean sales amount by region
+mean_by_region = df.groupby('Region')['Sales_Amount'].mean()
+print(""Mean Sales Amount by Region:"")
+print(mean_by_region)
+
+# 2. Median sales amount by product category
+median_by_category = df.groupby('Product_Category')['Sales_Amount'].median()
+print(""\nMedian Sales Amount by Product Category:"")
+print(median_by_category)
+
+# 3. Standard deviation of sales amount by sales representative
+std_by_rep = df.groupby('Sales_Rep')['Sales_Amount'].std()
+print(""\nStandard Deviation of Sales Amount by Sales Representative:"")
+print(std_by_rep)
+
+# 4. Correlation between sales amount and quantity sold
+corr_sales_qty = df['Sales_Amount'].corr(df['Quantity_Sold'])
+print(f""\nCorrelation between Sales Amount and Quantity Sold: {corr_sales_qty:.4f}"")
+
+# 5. Correlation between customer type (categorical) and sales amount
+# Encode customer type as numeric codes
+customer_type_codes = df['Customer_Type'].astype('category').cat.codes
+corr_customer_sales = df['Sales_Amount'].corr(customer_type_codes)
+print(f""Correlation between Customer Type and Sales Amount: {corr_customer_sales:.4f}"")
+
+# 6. Correlation between discount and sales amount
+corr_discount_sales = df['Sales_Amount'].corr(df['Discount'])
+print(f""Correlation between Discount and Sales Amount: {corr_discount_sales:.4f}"")
+
+# ------------------- Visualizations -------------------
+
+# 1. Sales by region (total sales)
+plt.figure(figsize=(10, 6))
+region_sales = df.groupby('Region')['Sales_Amount'].sum().sort_values(ascending=False)
+sns.barplot(x=region_sales.index, y=region_sales.values, palette=""viridis"")
+plt.title('Total Sales Amount by Region')
+plt.ylabel('Sales Amount')
+plt.xlabel('Region')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.savefig(""/tmp/total_sales_by_region.png"", dpi=300, bbox_inches=""tight"")
+plt.close()
+
+# 2. Sales by product category (total sales)
+plt.figure(figsize=(10, 6))
+category_sales = df.groupby('Product_Category')['Sales_Amount'].sum().sort_values(ascending=False)
+sns.barplot(x=category_sales.index, y=category_sales.values, palette=""magma"")
+plt.title('Total Sales Amount by Product Category')
+plt.ylabel('Sales Amount')
+plt.xlabel('Product Category')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.savefig(""/tmp/total_sales_by_product_category.png"", dpi=300, bbox_inches=""tight"")
+plt.close()
+
+# 3. Sales by sales representative (total sales)
+plt.figure(figsize=(12, 6))
+rep_sales = df.groupby('Sales_Rep')['Sales_Amount'].sum().sort_values(ascending=False)
+sns.barplot(x=rep_sales.index, y=rep_sales.values, palette=""coolwarm"")
+plt.title('Total Sales Amount by Sales Representative')
+plt.ylabel('Sales Amount')
+plt.xlabel('Sales Representative')
+plt.xticks(rotation=90)
+plt.tight_layout()
+plt.savefig(""/tmp/total_sales_by_sales_rep.png"", dpi=300, bbox_inches=""tight"")
+plt.close()
+
+# 4. Scatter plot: Sales Amount vs Quantity Sold
+plt.figure(figsize=(8, 6))
+sns.scatterplot(data=df, x='Quantity_Sold', y='Sales_Amount', hue='Region', palette=""deep"")
+plt.title('Sales Amount vs Quantity Sold')
+plt.xlabel('Quantity Sold')
+plt.ylabel('Sales Amount')
+plt.legend(title='Region', bbox_to_anchor=(1.05, 1), loc='upper left')
+plt.tight_layout()
+plt.savefig(""/tmp/sales_amount_vs_quantity_sold.png"", dpi=300, bbox_inches=""tight"")
+plt.close()
+
+# 5. Customer type vs sales amount (average sales)
+plt.figure(figsize=(8, 6))
+customer_sales = df.groupby('Customer_Type')['Sales_Amount'].mean().sort_values(ascending=False)
+sns.barplot(x=customer_sales.index, y=customer_sales.values, palette=""Set2"")
+plt.title('Average Sales Amount by Customer Type')
+plt.ylabel('Average Sales Amount')
+plt.xlabel('Customer Type')
+plt.tight_layout()
+plt.savefig(""/tmp/average_sales_by_customer_type.png"", dpi=300, bbox_inches=""tight"")
+plt.close()
+
+# 6. Histogram of Discount vs Sales Amount (using two subplots)
+plt.figure(figsize=(12, 5))
+plt.subplot(1, 2, 1)
+sns.histplot(df['Discount'], bins=30, kde=True, color='steelblue')
+plt.title('Distribution of Discount')
+plt.xlabel('Discount')
+plt.ylabel('Count')
+
+plt.subplot(1, 2, 2)
+sns.histplot(df['Sales_Amount'], bins=30, kde=True, color='seagreen')
+plt.title('Distribution of Sales Amount')
+plt.xlabel('Sales Amount')
+plt.ylabel('Count')
+plt.tight_layout()
+plt.savefig(""/tmp/discount_and_sales_amount_distribution.png"", dpi=300, bbox_inches=""tight"")
+plt.close()"
+filter out the questions where reference output and output are not same,"[class]
+RangeIndex: 120 entries, 0 to 119
+Data columns (total 13 columns):
+Column             Non-Null Count  Dtype
+0   id                 120 non-null    str
+1   inputs             120 non-null    str
+2   reference_outputs  120 non-null    str
+3   session_name       120 non-null    str
+4   repetition         120 non-null    int64
+5   outputs            120 non-null    str
+6   run                120 non-null    str
+7   status             120 non-null    str
+8   error              0 non-null      float64
+9   latency            120 non-null    float64
+10  tokens             120 non-null    int64
+11  total_cost         120 non-null    float64
+12  route_correct      120 non-null    float64
+
+dtypes: float64(4), int64(2), str(7)
+memory usage: 12.3 KB
+
+Null Count:
+id                     0
+inputs                 0
+reference_outputs      0
+session_name           0
+repetition             0
+outputs                0
+run                    0
+status                 0
+error                120
+latency                0
+tokens                 0
+total_cost             0
+route_correct          0","Summary: Filter out questions where reference output and output are not the same
+
+Analysis Tasks:
+- Compare 'reference_outputs' and 'outputs' columns
+- Identify and filter rows where 'reference_outputs' and 'outputs' do not match
+
+Statistical Tasks:
+- Count of questions where 'reference_outputs' and 'outputs' are not the same
+
+Visualization Tasks:
+- None required
+
+Execution Order: Analysis → Statistical Tasks","import json
+import pandas as pd
+
+# Load CSV
+df = pd.read_csv(
+    r""C:\Users\PERFECT SOLUTION\Downloads\conversation-routing-5223832f.csv""
+)
+
+# Extract route values from JSON strings
+def get_expected_route(value):
+    try:
+        return json.loads(value).get(""expected_route"")
+    except Exception:
+        return None
+
+
+def get_route(value):
+    try:
+        return json.loads(value).get(""route"")
+    except Exception:
+        return None
+
+
+df[""expected_route""] = df[""reference_outputs""].apply(get_expected_route)
+df[""predicted_route""] = df[""outputs""].apply(get_route)
+
+# Filter mismatches
+mismatched_df = df[df[""expected_route""] != df[""predicted_route""]]
+
+print(f""Total mismatched questions: {len(mismatched_df)}"")
+
+if len(mismatched_df) > 0:
+    print(""\nMismatched rows:\n"")
+    print(
+        mismatched_df[
+            [
+                ""id"",
+                ""expected_route"",
+                ""predicted_route"",
+            ]
+        ]
+    )
+else:
+    print(""\n?? All routes match!"")"
+"find out the precion , recall ad accuracy using reference outputs column as ground truth and outputs column as predicted also create a confusion matrix and a bar plot for showing precion , recall and accuracy","[class]
+RangeIndex: 120 entries, 0 to 119
+Data columns (total 13 columns):
+Column             Non-Null Count  Dtype
+0   id                 120 non-null    str
+1   inputs             120 non-null    str
+2   reference_outputs  120 non-null    str
+3   session_name       120 non-null    str
+4   repetition         120 non-null    int64
+5   outputs            120 non-null    str
+6   run                120 non-null    str
+7   status             120 non-null    str
+8   error              0 non-null      float64
+9   latency            120 non-null    float64
+10  tokens             120 non-null    int64
+11  total_cost         120 non-null    float64
+12  route_correct      120 non-null    float64
+
+dtypes: float64(4), int64(2), str(7)
+memory usage: 12.3 KB
+
+Null Count:
+id                     0
+inputs                 0
+reference_outputs      0
+session_name           0
+repetition             0
+outputs                0
+run                    0
+status                 0
+error                120
+latency                0
+tokens                 0
+total_cost             0
+route_correct          0","Summary: Calculate precision, recall, accuracy, confusion matrix, and bar plot
+
+Analysis Tasks:
+- Calculate precision
+- Calculate recall
+- Calculate accuracy
+- Create confusion matrix
+
+Statistical Tasks:
+- Precision
+- Recall
+- Accuracy
+
+Visualization Tasks:
+- Bar plot for precision, recall, and accuracy
+
+Execution Order: Analysis → Visualization","df = global_df.copy()
+
+# Ensure required columns exist
+required_cols = {""reference_outputs"", ""outputs""}
+missing = required_cols - set(df.columns)
+if missing:
+    raise KeyError(f""Missing columns: {missing}"")
+
+import json
+
+# Extract labels from JSON
+def extract_expected(value):
+    try:
+        return json.loads(value).get(""expected_route"")
+    except Exception:
+        return None
+
+
+def extract_predicted(value):
+    try:
+        return json.loads(value).get(""route"")
+    except Exception:
+        return None
+
+
+df[""ground_truth""] = df[""reference_outputs""].apply(extract_expected)
+df[""prediction""] = df[""outputs""].apply(extract_predicted)
+
+# Remove rows with invalid labels
+df = df.dropna(subset=[""ground_truth"", ""prediction""])
+
+y_true = df[""ground_truth""]
+y_pred = df[""prediction""]
+
+# Accuracy
+accuracy = (y_true == y_pred).mean()
+
+# Labels
+labels = sorted(set(y_true) | set(y_pred))
+
+precision_scores = []
+recall_scores = []
+
+# Compute TP, FP, FN for each class
+for label in labels:
+    tp = ((y_true == label) & (y_pred == label)).sum()
+    fp = ((y_true != label) & (y_pred == label)).sum()
+    fn = ((y_true == label) & (y_pred != label)).sum()
+
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+
+    precision_scores.append(precision)
+    recall_scores.append(recall)
+
+# Macro metrics
+macro_precision = np.mean(precision_scores)
+macro_recall = np.mean(recall_scores)
+
+# Macro F1
+if macro_precision + macro_recall > 0:
+    macro_f1 = (
+        2 * macro_precision * macro_recall
+        / (macro_precision + macro_recall)
+    )
+else:
+    macro_f1 = 0
+
+print(f""Accuracy : {accuracy:.4f}"")
+print(f""Precision: {macro_precision:.4f}"")
+print(f""Recall   : {macro_recall:.4f}"")
+print(f""F1 Score : {macro_f1:.4f}"")
+
+# Confusion Matrix
+conf_matrix = pd.crosstab(
+    y_true,
+    y_pred,
+    rownames=[""Actual""],
+    colnames=[""Predicted""],
+    dropna=False,
+)
+
+# Ensure every label appears as both row and column
+conf_matrix = conf_matrix.reindex(
+    index=labels,
+    columns=labels,
+    fill_value=0,
+)
+
+plt.figure(figsize=(8, 6))
+
+sns.heatmap(
+    conf_matrix,
+    annot=True,
+    fmt=""d"",
+    cmap=""Blues"",
+)
+
+plt.title(""Confusion Matrix"")
+plt.tight_layout()
+
+plt.savefig(
+    ""/tmp/confusion_matrix.png"",
+    dpi=300,
+    bbox_inches=""tight"",
+)
+
+plt.close()
+
+# Metrics bar chart
+metrics = [""Accuracy"", ""Precision"", ""Recall"", ""F1 Score""]
+values = [
+    accuracy,
+    macro_precision,
+    macro_recall,
+    macro_f1,
+]
+
+plt.figure(figsize=(6, 4))
+
+bars = plt.bar(metrics, values)
+
+plt.ylim(0, 1)
+plt.ylabel(""Score"")
+plt.title(""Classification Metrics"")
+
+for bar, value in zip(bars, values):
+    plt.text(
+        bar.get_x() + bar.get_width() / 2,
+        value + 0.02,
+        f""{value:.2f}"",
+        ha=""center"",
+    )
+
+plt.tight_layout()
+
+plt.savefig(
+    ""/tmp/classification_metrics.png"",
+    dpi=300,
+    bbox_inches=""tight"",
+)
+
+plt.close()"
+find out average latency,"[class]
+RangeIndex: 120 entries, 0 to 119
+Data columns (total 13 columns):
+Column             Non-Null Count  Dtype
+0   id                 120 non-null    str
+1   inputs             120 non-null    str
+2   reference_outputs  120 non-null    str
+3   session_name       120 non-null    str
+4   repetition         120 non-null    int64
+5   outputs            120 non-null    str
+6   run                120 non-null    str
+7   status             120 non-null    str
+8   error              0 non-null      float64
+9   latency            120 non-null    float64
+10  tokens             120 non-null    int64
+11  total_cost         120 non-null    float64
+12  route_correct      120 non-null    float64
+
+dtypes: float64(4), int64(2), str(7)
+memory usage: 12.3 KB
+
+Null Count:
+id                     0
+inputs                 0
+reference_outputs      0
+session_name           0
+repetition             0
+outputs                0
+run                    0
+status                 0
+error                120
+latency                0
+tokens                 0
+total_cost             0
+route_correct          0","Summary: Calculate average latency
+
+Analysis Tasks:
+- Calculate average latency
+
+Statistical Tasks:
+- Mean of latency
+
+Visualization Tasks:
+- None required
+
+Execution Order: Analysis","df = global_df.copy()
+
+# Ensure latency column is strictly numeric
+df['latency'] = pd.to_numeric(df['latency'], errors='coerce')
+
+# Calculate mean latency
+avg_latency = df['latency'].mean()
+
+print(f""Average Latency: {avg_latency:.4f}"")"
+Create a correlation heatmap.,"[class]
+RangeIndex: 1000 entries, 0 to 999
+Data columns (total 14 columns):
+Column                Non-Null Count  Dtype
+0   Product_ID            1000 non-null   int64
+1   Sale_Date             1000 non-null   str
+2   Sales_Rep             1000 non-null   str
+3   Region                1000 non-null   str
+4   Sales_Amount          1000 non-null   float64
+5   Quantity_Sold         1000 non-null   int64
+6   Product_Category      1000 non-null   str
+7   Unit_Cost             1000 non-null   float64
+8   Unit_Price            1000 non-null   float64
+9   Customer_Type         1000 non-null   str
+10  Discount              1000 non-null   float64
+11  Payment_Method        1000 non-null   str
+12  Sales_Channel         1000 non-null   str
+13  Region_and_Sales_Rep  1000 non-null   str
+
+dtypes: float64(4), int64(2), str(8)
+memory usage: 109.5 KB","Summary: Generate a correlation heatmap for numeric variables in the dataset.
+
+Analysis Tasks:
+- Compute correlation matrix for numeric columns.
+
+Statistical Tasks:
+- Calculate pairwise correlation coefficients for numeric columns.
+
+Visualization Tasks:
+- Create a heatmap of the correlation matrix.
+
+Execution Order: Analysis → Visualization","df = global_df.copy()
+
+# Filter dataset to only include numeric columns for correlation
+numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
+corr_matrix = df[numeric_cols].corr()
+
+print(""Correlation Matrix Computed Successfully."")
+
+# Visualization: Heatmap
+plt.figure(figsize=(10, 8))
+sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', fmt="".2f"", linewidths=0.5)
+plt.title('Correlation Heatmap of Numeric Variables')
+plt.tight_layout()
+plt.savefig(""/tmp/correlation_heatmap.png"", dpi=300, bbox_inches=""tight"")
+plt.close()"
+Find the top 10 products by sales and visualize them.,"[class]
+RangeIndex: 1000 entries, 0 to 999
+Data columns (total 14 columns):
+Column                Non-Null Count  Dtype
+0   Product_ID            1000 non-null   int64
+1   Sale_Date             1000 non-null   str
+2   Sales_Rep             1000 non-null   str
+3   Region                1000 non-null   str
+4   Sales_Amount          1000 non-null   float64
+5   Quantity_Sold         1000 non-null   int64
+6   Product_Category      1000 non-null   str
+7   Unit_Cost             1000 non-null   float64
+8   Unit_Price            1000 non-null   float64
+9   Customer_Type         1000 non-null   str
+10  Discount              1000 non-null   float64
+11  Payment_Method        1000 non-null   str
+12  Sales_Channel         1000 non-null   str
+13  Region_and_Sales_Rep  1000 non-null   str
+
+dtypes: float64(4), int64(2), str(8)
+memory usage: 109.5 KB","Summary: Plan to identify the top 10 products by sales and visualize them.
+
+Analysis Tasks:
+- Verify existence of a product column in the dataset
+- Aggregate sales by product
+- Sort products by total sales and select the top 10
+
+Statistical Tasks:
+- Compute total sales per product
+- Compute each top product's percentage contribution to overall sales
+
+Visualization Tasks:
+- Create a bar chart of the top 10 products by sales
+
+Execution Order: Analysis → Statistical → Visualization","df = global_df.copy()
+
+# Aggregate sales by product and sort to find top 10
+product_sales = df.groupby('Product_ID')['Sales_Amount'].sum().reset_index()
+top_10_products = product_sales.sort_values(by='Sales_Amount', ascending=False).head(10)
+
+# Calculate percentage contribution
+total_sales = df['Sales_Amount'].sum()
+top_10_products['Contribution_Pct'] = (top_10_products['Sales_Amount'] / total_sales) * 100
+
+print(""Top 10 Products by Sales Amount and Contribution Percentage:"")
+print(top_10_products.to_string(index=False))
+
+# Visualization: Bar Chart
+plt.figure(figsize=(10, 6))
+# Convert Product_ID to string so it plots as categorical rather than continuous
+sns.barplot(
+    data=top_10_products, 
+    x=top_10_products['Product_ID'].astype(str), 
+    y='Sales_Amount', 
+    palette='Blues_r'
+)
+plt.title('Top 10 Products by Total Sales')
+plt.xlabel('Product ID')
+plt.ylabel('Total Sales Amount')
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.savefig(""/tmp/top_10_products_sales.png"", dpi=300, bbox_inches=""tight"")
+plt.close()"
+Perform exploratory data analysis on the uploaded dataset,"[class]
+RangeIndex: 1000 entries, 0 to 999
+Data columns (total 14 columns):
+Column                Non-Null Count  Dtype
+0   Product_ID            1000 non-null   int64
+1   Sale_Date             1000 non-null   str
+2   Sales_Rep             1000 non-null   str
+3   Region                1000 non-null   str
+4   Sales_Amount          1000 non-null   float64
+5   Quantity_Sold         1000 non-null   int64
+6   Product_Category      1000 non-null   str
+7   Unit_Cost             1000 non-null   float64
+8   Unit_Price            1000 non-null   float64
+9   Customer_Type         1000 non-null   str
+10  Discount              1000 non-null   float64
+11  Payment_Method        1000 non-null   str
+12  Sales_Channel         1000 non-null   str
+13  Region_and_Sales_Rep  1000 non-null   str
+
+dtypes: float64(4), int64(2), str(8)
+memory usage: 109.5 KB","Summary: Plan for exploratory data analysis of the dataset.
+
+Analysis Tasks:
+- Inspect dataset shape and data types
+- Check for missing values and plan imputation
+- Perform univariate analysis of numeric variables
+- Perform univariate analysis of categorical variables
+- Compute correlation matrix for numeric variables
+- Group by categorical variables to compute summary statistics for numeric variables
+- Analyze time series trend of Sales over Date
+- Detect outliers in numeric variables
+- Identify potential data quality issues
+
+Statistical Tasks:
+- Compute descriptive statistics (mean, median, std, min, max, quartiles) for numeric columns
+- Compute frequency counts for categorical columns
+- Compute Pearson correlation coefficients between numeric variables
+- Compute group-wise summary statistics (mean, count) for numeric variables by categorical groupings
+- Compute monthly average Sales for time series analysis
+
+Visualization Tasks:
+- None required
+
+Execution Order: Analysis ? Statistical","df = global_df.copy()
+
+print(""Dataset Shape:"")
+print(df.shape)
+
+print(""\nColumn Information:"")
+print(df.info())
+
+print(""\nFirst Five Rows:"")
+print(df.head())
+
+print(""\nMissing Values:"")
+print(df.isnull().sum())
+
+print(""\nDuplicate Rows:"")
+print(df.duplicated().sum())
+
+# Convert datetime columns if present
+for col in df.columns:
+    if ""date"" in col.lower():
+        try:
+            df[col] = pd.to_datetime(df[col])
+        except Exception:
+            pass
+
+numeric_cols = df.select_dtypes(include=[""number""]).columns
+categorical_cols = df.select_dtypes(exclude=[""number""]).columns
+
+if len(numeric_cols) > 0:
+    print(""\nDescriptive Statistics:"")
+    print(df[numeric_cols].describe())
+
+if len(categorical_cols) > 0:
+    print(""\nCategorical Summary:"")
+    for col in categorical_cols:
+        print(f""\n{col}"")
+        print(df[col].value_counts())
+
+if len(numeric_cols) > 1:
+    corr = df[numeric_cols].corr()
+
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(
+        corr,
+        annot=True,
+        cmap=""coolwarm"",
+        fmt="".2f""
+    )
+    plt.title(""Correlation Heatmap"")
+    plt.tight_layout()
+    plt.savefig(
+        ""/tmp/correlation_heatmap.png"",
+        dpi=300,
+        bbox_inches=""tight""
+    )
+    plt.close()
+
+for col in numeric_cols:
+    plt.figure(figsize=(6, 4))
+    sns.histplot(df[col].dropna(), kde=True)
+    plt.title(f""Distribution of {col}"")
+    plt.tight_layout()
+    plt.savefig(
+        f""/tmp/{col}_distribution.png"",
+        dpi=300,
+        bbox_inches=""tight""
+    )
+    plt.close()
+
+    plt.figure(figsize=(6, 4))
+    sns.boxplot(x=df[col])
+    plt.title(f""Box Plot of {col}"")
+    plt.tight_layout()
+    plt.savefig(
+        f""/tmp/{col}_boxplot.png"",
+        dpi=300,
+        bbox_inches=""tight""
+    )
+    plt.close()
+
+for col in categorical_cols:
+    counts = df[col].value_counts()
+
+    plt.figure(figsize=(8, 4))
+    sns.barplot(
+        x=counts.index,
+        y=counts.values
+    )
+    plt.xticks(rotation=45, ha=""right"")
+    plt.title(f""{col} Distribution"")
+    plt.tight_layout()
+    plt.savefig(
+        f""/tmp/{col}_distribution.png"",
+        dpi=300,
+        bbox_inches=""tight""
+    )
+    plt.close()
+
+date_cols = [
+    col
+    for col in df.columns
+    if pd.api.types.is_datetime64_any_dtype(df[col])
+]
+
+sales_cols = [
+    col
+    for col in df.columns
+    if ""sales"" in col.lower() and pd.api.types.is_numeric_dtype(df[col])
+]
+
+if date_cols and sales_cols:
+    date_col = date_cols[0]
+    sales_col = sales_cols[0]
+
+    trend = (
+        df
+        .groupby(df[date_col].dt.to_period(""M""))[sales_col]
+        .sum()
+        .reset_index()
+    )
+
+    trend[date_col] = trend[date_col].astype(str)
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(trend[date_col], trend[sales_col], marker=""o"")
+    plt.xticks(rotation=45)
+    plt.title(""Monthly Sales Trend"")
+    plt.tight_layout()
+    plt.savefig(
+        ""/tmp/monthly_sales_trend.png"",
+        dpi=300,
+        bbox_inches=""tight""
+    )
+    plt.close()
+
+print(""\nEDA completed successfully."")"
+Analyze sales by category and region using charts and statistics.,"[class]
+RangeIndex: 1000 entries, 0 to 999
+Data columns (total 14 columns):
+Column                Non-Null Count  Dtype
+0   Product_ID            1000 non-null   int64
+1   Sale_Date             1000 non-null   str
+2   Sales_Rep             1000 non-null   str
+3   Region                1000 non-null   str
+4   Sales_Amount          1000 non-null   float64
+5   Quantity_Sold         1000 non-null   int64
+6   Product_Category      1000 non-null   str
+7   Unit_Cost             1000 non-null   float64
+8   Unit_Price            1000 non-null   float64
+9   Customer_Type         1000 non-null   str
+10  Discount              1000 non-null   float64
+11  Payment_Method        1000 non-null   str
+12  Sales_Channel         1000 non-null   str
+13  Region_and_Sales_Rep  1000 non-null   str
+
+dtypes: float64(4), int64(2), str(8)
+memory usage: 109.5 KB","Summary: Analyze sales by category and region, generate descriptive statistics and visual charts.
+
+Analysis Tasks:
+- Compute total sales per category
+- Compute total sales per region
+- Compute average sales per category
+- Compute average sales per region
+- Compute median sales per category
+- Compute median sales per region
+- Compute standard deviation of sales per category
+- Compute standard deviation of sales per region
+- Identify top 3 categories by sales
+- Identify top 3 regions by sales
+
+Statistical Tasks:
+- None specifically separated (handled in analysis)
+
+Visualization Tasks:
+- Bar chart of total sales by category
+- Bar chart of total sales by region
+- Stacked bar chart of sales by category within each region
+- Heatmap of sales intensity across categories and regions
+
+Execution Order: Analysis ? Visualization","df = global_df.copy()
+
+required_cols = {
+    ""Sales_Amount"",
+    ""Product_Category"",
+    ""Region"",
+}
+
+missing = required_cols - set(df.columns)
+if missing:
+    raise KeyError(f""Missing columns: {missing}"")
+
+# Summary statistics by product category
+category_stats = (
+    df.groupby(""Product_Category"")[""Sales_Amount""]
+    .agg([""sum"", ""mean"", ""median"", ""std"", ""count""])
+    .sort_values(""sum"", ascending=False)
+)
+
+print(""Sales Statistics by Product Category"")
+print(category_stats)
+
+# Summary statistics by region
+region_stats = (
+    df.groupby(""Region"")[""Sales_Amount""]
+    .agg([""sum"", ""mean"", ""median"", ""std"", ""count""])
+    .sort_values(""sum"", ascending=False)
+)
+
+print(""\nSales Statistics by Region"")
+print(region_stats)
+
+# Top categories
+print(""\nTop 3 Categories by Total Sales"")
+print(category_stats.head(3))
+
+# Top regions
+print(""\nTop 3 Regions by Total Sales"")
+print(region_stats.head(3))
+
+# Total sales by category
+plt.figure(figsize=(8, 5))
+
+category_stats[""sum""].plot(
+    kind=""bar""
+)
+
+plt.ylabel(""Total Sales"")
+plt.title(""Total Sales by Product Category"")
+plt.xticks(rotation=45, ha=""right"")
+plt.tight_layout()
+
+plt.savefig(
+    ""/tmp/sales_by_category.png"",
+    dpi=300,
+    bbox_inches=""tight"",
+)
+
+plt.close()
+
+# Total sales by region
+plt.figure(figsize=(8, 5))
+
+region_stats[""sum""].plot(
+    kind=""bar""
+)
+
+plt.ylabel(""Total Sales"")
+plt.title(""Total Sales by Region"")
+plt.xticks(rotation=45, ha=""right"")
+plt.tight_layout()
+
+plt.savefig(
+    ""/tmp/sales_by_region.png"",
+    dpi=300,
+    bbox_inches=""tight"",
+)
+
+plt.close()
+
+# Sales by category within region
+pivot = df.pivot_table(
+    values=""Sales_Amount"",
+    index=""Region"",
+    columns=""Product_Category"",
+    aggfunc=""sum"",
+    fill_value=0,
+)
+
+plt.figure(figsize=(10, 6))
+
+pivot.plot(
+    kind=""bar"",
+    stacked=True,
+)
+
+plt.ylabel(""Total Sales"")
+plt.title(""Sales by Category Within Each Region"")
+plt.xticks(rotation=45, ha=""right"")
+plt.tight_layout()
+
+plt.savefig(
+    ""/tmp/stacked_sales_by_region_category.png"",
+    dpi=300,
+    bbox_inches=""tight"",
+)
+
+plt.close()
+
+# Heatmap
+plt.figure(figsize=(10, 6))
+
+sns.heatmap(
+    pivot,
+    annot=True,
+    fmt="".0f"",
+    cmap=""YlGnBu"",
+)
+
+plt.title(""Sales Heatmap by Region and Category"")
+plt.tight_layout()
+
+plt.savefig(
+    ""/tmp/sales_region_category_heatmap.png"",
+    dpi=300,
+    bbox_inches=""tight"",
+)
+
+plt.close()
+
+print(""\nAnalysis completed successfully."")"
+Perform end to end data quality assessment statistical analysis visualization and dashboard generation for the uploaded dataset,"[class]
+RangeIndex: 1000 entries, 0 to 999
+Data columns (total 14 columns):
+Column                Non-Null Count  Dtype
+0   Product_ID            1000 non-null   int64
+1   Sale_Date             1000 non-null   str
+2   Sales_Rep             1000 non-null   str
+3   Region                1000 non-null   str
+4   Sales_Amount          1000 non-null   float64
+5   Quantity_Sold         1000 non-null   int64
+6   Product_Category      1000 non-null   str
+7   Unit_Cost             1000 non-null   float64
+8   Unit_Price            1000 non-null   float64
+9   Customer_Type         1000 non-null   str
+10  Discount              1000 non-null   float64
+11  Payment_Method        1000 non-null   str
+12  Sales_Channel         1000 non-null   str
+13  Region_and_Sales_Rep  1000 non-null   str
+
+dtypes: float64(4), int64(2), str(8)
+memory usage: 109.5 KB","Summary: Plan for end-to-end data quality assessment, statistical analysis, and dashboard generation.
+
+Analysis Tasks:
+- Perform data quality assessment: check for missing values, duplicates, data type consistency, and outlier detection.
+- Validate date column format and extract year, month, day components.
+- Encode categorical variables using appropriate encoding for analysis.
+- Generate data profiling report summarizing distributions, unique values, and data types.
+- Identify and flag inconsistent or out-of-range values for numeric columns.
+- Create a cleaned dataset ready for statistical analysis.
+- Generate a preliminary dashboard skeleton with key metrics placeholders.
+
+Statistical Tasks:
+- Compute descriptive statistics (mean, median, std, min, max, quartiles) for numeric columns.
+- Calculate missing value counts and percentages per column.
+- Generate correlation matrix for numeric variables.
+- Perform group-wise summary statistics by region and category.
+- Conduct time series analysis on Sales over Date, including trend and seasonality detection.
+- Identify outliers using IQR or z-score methods and report their counts.
+- Generate summary tables for dashboard display.
+
+Visualization Tasks:
+- None explicitly defined
+
+Execution Order: Analysis ? Statistical","df = global_df.copy()
+
+# Validate required columns
+required_cols = {
+    ""Sale_Date"",
+    ""Sales_Amount"",
+    ""Product_Category"",
+    ""Region"",
+}
+
+missing = required_cols - set(df.columns)
+if missing:
+    raise KeyError(f""Missing columns: {missing}"")
+
+print(""========== DATASET OVERVIEW =========="")
+print(f""Rows: {len(df)}"")
+print(f""Columns: {len(df.columns)}"")
+print(df.dtypes)
+
+# ----------------------------
+# Data Quality Assessment
+# ----------------------------
+
+print(""\n========== MISSING VALUES =========="")
+missing_summary = pd.DataFrame({
+    ""Missing Count"": df.isnull().sum(),
+    ""Missing Percentage"": (df.isnull().mean() * 100).round(2)
+})
+print(missing_summary)
+
+print(""\n========== DUPLICATES =========="")
+duplicate_count = df.duplicated().sum()
+print(f""Duplicate Rows: {duplicate_count}"")
+
+# Convert dates
+df[""Sale_Date""] = pd.to_datetime(df[""Sale_Date""], errors=""coerce"")
+
+print(""\n========== INVALID DATES =========="")
+print(df[""Sale_Date""].isna().sum())
+
+# Date features
+df[""Year""] = df[""Sale_Date""].dt.year
+df[""Month""] = df[""Sale_Date""].dt.to_period(""M"").astype(str)
+df[""Day""] = df[""Sale_Date""].dt.day
+
+# ----------------------------
+# Descriptive Statistics
+# ----------------------------
+
+numeric_df = df.select_dtypes(include=[""number""])
+
+print(""\n========== DESCRIPTIVE STATISTICS =========="")
+print(numeric_df.describe())
+
+# ----------------------------
+# Correlation
+# ----------------------------
+
+if numeric_df.shape[1] > 1:
+
+    corr = numeric_df.corr()
+
+    print(""\n========== CORRELATION =========="")
+    print(corr)
+
+    plt.figure(figsize=(8,6))
+
+    sns.heatmap(
+        corr,
+        annot=True,
+        fmt="".2f"",
+        cmap=""coolwarm""
+    )
+
+    plt.title(""Correlation Heatmap"")
+    plt.tight_layout()
+
+    plt.savefig(
+        ""/tmp/correlation_heatmap.png"",
+        dpi=300,
+        bbox_inches=""tight""
+    )
+
+    plt.close()
+
+# ----------------------------
+# Outlier Detection (IQR)
+# ----------------------------
+
+print(""\n========== OUTLIERS =========="")
+
+outlier_summary = {}
+
+for col in numeric_df.columns:
+
+    q1 = numeric_df[col].quantile(0.25)
+    q3 = numeric_df[col].quantile(0.75)
+
+    iqr = q3 - q1
+
+    lower = q1 - 1.5 * iqr
+    upper = q3 + 1.5 * iqr
+
+    count = (
+        (numeric_df[col] < lower) |
+        (numeric_df[col] > upper)
+    ).sum()
+
+    outlier_summary[col] = count
+
+print(pd.Series(outlier_summary))
+
+# ----------------------------
+# Group Statistics
+# ----------------------------
+
+print(""\n========== REGION SUMMARY =========="")
+
+region_summary = (
+    df.groupby(""Region"")[""Sales_Amount""]
+      .agg([""count"",""sum"",""mean"",""median"",""std""])
+)
+
+print(region_summary)
+
+print(""\n========== CATEGORY SUMMARY =========="")
+
+category_summary = (
+    df.groupby(""Product_Category"")[""Sales_Amount""]
+      .agg([""count"",""sum"",""mean"",""median"",""std""])
+)
+
+print(category_summary)
+
+# ----------------------------
+# Monthly Trend
+# ----------------------------
+
+monthly_sales = (
+    df.groupby(""Month"")[""Sales_Amount""]
+      .sum()
+      .reset_index()
+)
+
+plt.figure(figsize=(10,5))
+
+plt.plot(
+    monthly_sales[""Month""],
+    monthly_sales[""Sales_Amount""],
+    marker=""o""
+)
+
+plt.xticks(rotation=45)
+
+plt.title(""Monthly Sales Trend"")
+
+plt.tight_layout()
+
+plt.savefig(
+    ""/tmp/monthly_sales_trend.png"",
+    dpi=300,
+    bbox_inches=""tight""
+)
+
+plt.close()
+
+# ----------------------------
+# Category Sales
+# ----------------------------
+
+category_totals = (
+    df.groupby(""Product_Category"")[""Sales_Amount""]
+      .sum()
+      .sort_values(ascending=False)
+)
+
+plt.figure(figsize=(8,5))
+
+category_totals.plot(kind=""bar"")
+
+plt.ylabel(""Sales"")
+
+plt.title(""Sales by Category"")
+
+plt.tight_layout()
+
+plt.savefig(
+    ""/tmp/sales_by_category.png"",
+    dpi=300,
+    bbox_inches=""tight""
+)
+
+plt.close()
+
+# ----------------------------
+# Region Sales
+# ----------------------------
+
+region_totals = (
+    df.groupby(""Region"")[""Sales_Amount""]
+      .sum()
+      .sort_values(ascending=False)
+)
+
+plt.figure(figsize=(8,5))
+
+region_totals.plot(kind=""bar"")
+
+plt.ylabel(""Sales"")
+
+plt.title(""Sales by Region"")
+
+plt.tight_layout()
+
+plt.savefig(
+    ""/tmp/sales_by_region.png"",
+    dpi=300,
+    bbox_inches=""tight""
+)
+
+plt.close()
+
+# ----------------------------
+# Interactive Dashboard
+# ----------------------------
+
+fig = px.bar(
+    region_totals.reset_index(),
+    x=""Region"",
+    y=""Sales_Amount"",
+    title=""Total Sales by Region""
+)
+
+fig.write_html(
+    ""/tmp/sales_dashboard.html""
+)
+
+print(""\n========== DATA QUALITY SUMMARY =========="")
+print(missing_summary)
+
+print(""\n========== OUTLIER SUMMARY =========="")
+print(pd.Series(outlier_summary))
+
+print(""\nAnalysis completed successfully."")"
+Analyze customer purchase frequency by month,"[class]
+RangeIndex: 1000 entries, 0 to 999
+Data columns (total 14 columns):
+Column                Non-Null Count  Dtype
+0   Product_ID            1000 non-null   int64
+1   Sale_Date             1000 non-null   str
+2   Sales_Rep             1000 non-null   str
+3   Region                1000 non-null   str
+4   Sales_Amount          1000 non-null   float64
+5   Quantity_Sold         1000 non-null   int64
+6   Product_Category      1000 non-null   str
+7   Unit_Cost             1000 non-null   float64
+8   Unit_Price            1000 non-null   float64
+9   Customer_Type         1000 non-null   str
+10  Discount              1000 non-null   float64
+11  Payment_Method        1000 non-null   str
+12  Sales_Channel         1000 non-null   str
+13  Region_and_Sales_Rep  1000 non-null   str
+
+dtypes: float64(4), int64(2), str(8)
+memory usage: 109.5 KB","Summary: Analyze customer purchase frequency by month, compute key statistics, and visualize the trend.
+
+Analysis Tasks:
+- Calculate the number of purchases per month by aggregating the Date column.
+- Determine the monthly purchase frequency distribution across all customers.
+
+Statistical Tasks:
+- Compute mean, median, and standard deviation of monthly purchase frequency.
+- Calculate month-over-month growth rates for purchase frequency.
+
+Visualization Tasks:
+- Create a line chart showing monthly purchase frequency over time.
+
+Execution Order: Analysis ? Statistical ? Visualization","df = global_df.copy()
+
+# Ensure required column exists
+required_cols = {""Sale_Date""}
+missing = required_cols - set(df.columns)
+if missing:
+    raise KeyError(f""Missing columns: {missing}"")
+
+# Convert Sale_Date to datetime
+df[""Sale_Date""] = pd.to_datetime(df[""Sale_Date""], errors=""coerce"")
+
+# Remove invalid dates
+df = df.dropna(subset=[""Sale_Date""])
+
+# Extract Year-Month
+df[""Year_Month""] = df[""Sale_Date""].dt.to_period(""M"").astype(str)
+
+# Calculate monthly purchase frequency (number of transactions)
+monthly_frequency = (
+    df.groupby(""Year_Month"")
+      .size()
+      .reset_index(name=""Purchase_Frequency"")
+      .sort_values(""Year_Month"")
+)
+
+# Calculate month-over-month growth
+monthly_frequency[""MoM_Growth_Percent""] = (
+    monthly_frequency[""Purchase_Frequency""]
+    .pct_change()
+    .fillna(0)
+    * 100
+)
+
+# Summary statistics
+mean_frequency = monthly_frequency[""Purchase_Frequency""].mean()
+median_frequency = monthly_frequency[""Purchase_Frequency""].median()
+std_frequency = monthly_frequency[""Purchase_Frequency""].std()
+min_frequency = monthly_frequency[""Purchase_Frequency""].min()
+max_frequency = monthly_frequency[""Purchase_Frequency""].max()
+
+highest_month = monthly_frequency.loc[
+    monthly_frequency[""Purchase_Frequency""].idxmax()
+]
+
+lowest_month = monthly_frequency.loc[
+    monthly_frequency[""Purchase_Frequency""].idxmin()
+]
+
+print(""Monthly Purchase Frequency"")
+print(monthly_frequency)
+
+print(""\nSummary Statistics"")
+print(f""Average Monthly Purchases : {mean_frequency:.2f}"")
+print(f""Median Monthly Purchases  : {median_frequency:.2f}"")
+print(f""Standard Deviation        : {std_frequency:.2f}"")
+print(f""Minimum Purchases         : {min_frequency}"")
+print(f""Maximum Purchases         : {max_frequency}"")
+
+print(
+    f""\nHighest Purchase Month: ""
+    f""{highest_month['Year_Month']} ""
+    f""({highest_month['Purchase_Frequency']} purchases)""
+)
+
+print(
+    f""Lowest Purchase Month: ""
+    f""{lowest_month['Year_Month']} ""
+    f""({lowest_month['Purchase_Frequency']} purchases)""
+)
+
+print(""\nMonth-over-Month Growth (%)"")
+print(monthly_frequency[[""Year_Month"", ""MoM_Growth_Percent""]])
+
+# Line chart
+plt.figure(figsize=(10, 5))
+plt.plot(
+    monthly_frequency[""Year_Month""],
+    monthly_frequency[""Purchase_Frequency""],
+    marker=""o"",
+)
+plt.title(""Monthly Purchase Frequency"")
+plt.xlabel(""Month"")
+plt.ylabel(""Number of Purchases"")
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.savefig(
+    ""/tmp/monthly_purchase_frequency_line.png"",
+    dpi=300,
+    bbox_inches=""tight"",
+)
+plt.close()"

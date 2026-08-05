@@ -1,151 +1,197 @@
-from DataScribe.Backend.app.src.evaluation.judge import judge
+import os
+import sys
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+import pandas as pd
+from langchain_groq import ChatGroq
+from langchain_core.prompts import PromptTemplate
+
+load_dotenv()
+
+# ==========================================
+# Planner Judge
+# ==========================================
+
+class PlannerEvaluation(BaseModel):
+    correctness: int = Field(..., ge=1, le=5)
+    completeness: int = Field(..., ge=1, le=5)
+    relevance: int = Field(..., ge=1, le=5)
+
+    correctness_reason: str
+    completeness_reason: str
+    relevance_reason: str
 
 
-CORRECTNESS_PROMPT = """
-You are an expert evaluator assessing execution plans.
+judge_llm = ChatGroq(
+    model="llama-3.3-70b-versatile",
+    temperature=0.0,
+)
 
-Determine whether the generated plan correctly captures
-the user's request.
+judge = judge_llm.with_structured_output(PlannerEvaluation)
 
-Scoring
+#1-5 Scale Multi-Metric Evaluator
 
-5 = Fully correct
+def evaluate_plan_metrics(run, example) -> list[dict]:
+    """
+    Evaluates Correctness, Completeness, and Relevance on a 1-5 scale.
+    """
+    expected_plan = example.outputs["expected_plan"]
+    user_query = example.inputs["user_query"]
+    
+    # 🛠️ Safely extract the plan in case the execution fails
+    outputs = run.outputs or {}
+    generated_plan = outputs.get("generated_plan", "Error: No plan generated.")
+    
+    # If the node failed, immediately return 1s (completely incorrect/missing)
+    if "Node Execution Failed" in generated_plan or "Error:" in generated_plan:
+        return [
+            {"key": "Correctness_Score", "score": 1, "comment": generated_plan},
+            {"key": "Completeness_Score", "score": 1, "comment": generated_plan},
+            {"key": "Relevance_Score", "score": 1, "comment": generated_plan}
+        ]
+    
+    prompt = PromptTemplate.from_template("""
+    You are an impartial evaluator of AI-generated data analysis plans.
 
-4 = Mostly correct
+    Your task is to evaluate ONLY the planning quality.
 
-3 = Partially correct
+    Do NOT evaluate implementation, Python code quality, syntax, execution, or formatting.
 
-2 = Mostly incorrect
+    The Expected Reference Plan is ONE valid solution.
+    The Generated Plan does NOT need to match its wording, ordering, or formatting.
 
-1 = Completely incorrect
-"""
+    Judge based on whether the Generated Plan would successfully solve the user's request.
 
+    Reward semantic equivalence rather than textual similarity.
 
-COMPLETENESS_PROMPT = """
-Determine whether the planner missed important analysis,
-statistics or visualization tasks.
+    Ignore:
+    - wording differences
+    - numbering differences
+    - bullet formatting
+    - ordering of valid steps
+    - different but equally valid analytical approaches
 
-Scoring
+    Penalize:
+    - incorrect analytical reasoning
+    - logically inconsistent workflows
+    - missing essential analysis steps
+    - irrelevant analysis
+    - hallucinated tasks
+    - technically incorrect operations
 
-5 = Complete
+    User Query
+    -----------
+    {user_query}
 
-4 = Nearly complete
+    Expected Reference Plan
+    -----------------------
+    {expected_plan}
 
-3 = Some missing tasks
+    Generated Plan
+    --------------
+    {generated_plan}
 
-2 = Many missing tasks
+    Evaluate the Generated Plan using the following rubrics.
 
-1 = Missing most tasks
-"""
+    CORRECTNESS
 
+    5
+    All essential analytical steps are technically correct.
+    No incorrect reasoning.
 
-RELEVANCE_PROMPT = """
-Determine whether every task in the execution plan
-is relevant to the user's request.
+    4
+    Minor inaccuracies that do not significantly affect the analysis.
 
-Penalize:
+    3
+    Some correct planning, but at least one important analytical mistake.
 
-- unnecessary analysis
-- unnecessary charts
-- unrelated workflow stages
+    2
+    Major analytical mistakes that would likely produce an incorrect analysis.
 
-Scoring
+    1
+    Fundamentally incorrect or unrelated plan.
 
-5 = Perfectly focused
+    COMPLETENESS
 
-4 = Mostly focused
+    5
+    Includes every important planning step required.
 
-3 = Some irrelevant tasks
+    4
+    Missing one minor step.
 
-2 = Many irrelevant tasks
+    3
+    Missing one important step.
 
-1 = Mostly irrelevant
-"""
+    2
+    Missing several important steps.
 
+    1
+    Most required planning steps are absent.
 
-PLANNING_QUALITY_PROMPT = """
-Evaluate the quality of the execution plan.
+    RELEVANCE
 
-Consider
+    5
+    Every task directly contributes to answering the user's request.
 
-- logical decomposition
-- execution order
-- dependency handling
-- workflow organization
+    4
+    One minor unnecessary task.
 
-Scoring
+    3
+    Several unnecessary tasks.
 
-5 = Excellent
+    2
+    Many irrelevant tasks.
 
-4 = Good
+    1
+    Mostly unrelated to the user's request.
 
-3 = Acceptable
+    Provide scores from 1-5 for each metric and concise reasoning for EACH metric separately.
+    """)
+    
+    chain = prompt | judge
+    
+    try:
+        result = chain.invoke(
+            {
+                "user_query": user_query,
+                "expected_plan": expected_plan,
+                "generated_plan": generated_plan,
+            }
+        )
 
-2 = Weak
-
-1 = Poor
-"""
-
-
-def evaluate_correctness(query, plan):
-
-    return judge(
-        CORRECTNESS_PROMPT,
-        f"""
-User Request
-
-{query}
-
-Execution Plan
-
-{plan}
-""",
-    )
-
-
-def evaluate_completeness(query, plan):
-
-    return judge(
-        COMPLETENESS_PROMPT,
-        f"""
-User Request
-
-{query}
-
-Execution Plan
-
-{plan}
-""",
-    )
-
-
-def evaluate_relevance(query, plan):
-
-    return judge(
-        RELEVANCE_PROMPT,
-        f"""
-User Request
-
-{query}
-
-Execution Plan
-
-{plan}
-""",
-    )
-
-
-def evaluate_planning_quality(query, plan):
-
-    return judge(
-        PLANNING_QUALITY_PROMPT,
-        f"""
-User Request
-
-{query}
-
-Execution Plan
-
-{plan}
-""",
-    )
+        return [
+            {
+                "key": "Correctness_Score",
+                "score": result.correctness,
+                "comment": result.correctness_reason,
+            },
+            {
+                "key": "Completeness_Score",
+                "score": result.completeness,
+                "comment": result.completeness_reason,
+            },
+            {
+                "key": "Relevance_Score",
+                "score": result.relevance,
+                "comment": result.relevance_reason,
+            },
+        ]
+        
+    except Exception as e:
+        return [
+            {
+                "key": "Correctness_Score",
+                "score": 1,
+                "comment": f"Judge Error: {e}",
+            },
+            {
+                "key": "Completeness_Score",
+                "score": 1,
+                "comment": f"Judge Error: {e}",
+            },
+            {
+                "key": "Relevance_Score",
+                "score": 1,
+                "comment": f"Judge Error: {e}",
+            },
+        ]

@@ -1,135 +1,83 @@
+import os
+import sys
+from pydantic import BaseModel, Field
 import pandas as pd
+from pathlib import Path
 from dotenv import load_dotenv
+from langsmith import Client
+from langsmith.evaluation import evaluate
+from langchain_groq import ChatGroq
+from langchain_core.prompts import PromptTemplate
+from evaluators.planner_evaluators import evaluate_plan_metrics
 
-from langsmith import Client, traceable
-
-from DataScribe.Backend.app.src.agents.planner_node import planner_node
-from DataScribe.Backend.app.src.evaluation.evaluators.planner_evaluators import (
-    evaluate_correctness,
-    evaluate_completeness,
-    evaluate_relevance,
-    evaluate_planning_quality,
-)
+# Setup path so Python can find the 'Backend' module
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 load_dotenv()
-
+# Initialize LangSmith Client
 client = Client()
 
-DATASET_NAME = "Planner Evaluation"
 
-
-@traceable(
-    name="Planner",
-    project_name="DataScribe Planner Evaluation",
-)
-def run_planner(user_query: str):
+# ==========================================
+# 1. Active Target Function (Tracks Latency)
+# ==========================================
+def run_planner(inputs: dict) -> dict:
     """
-    Executes the planner node.
+    Actively executes your Planner node.
+    LangSmith will trace this execution to capture latency and token usage.
     """
-
+    user_query = inputs.get("user_query", "")
+    df_schema = inputs.get("df_schema", "")
+    
+    # Construct the state dictionary exactly as your LangGraph expects it
     state = {
         "user_query": user_query,
-        "df_schema": """
-Columns:
-- Age (int)
-- Salary (float)
-- Gender (category)
-- Department (category)
-- Sales (float)
-- Region (category)
-- Date (datetime)
-""",
-        "plan": "",
+        "df_schema": df_schema,
+        "messages": [],
+        "model": "llama-3.3-70b-versatile", # Required by your get_llm function
         "supervisor_feedback": "",
+        "plan": ""
     }
-
-    result = planner_node(state)
-
-    return result["plan"]
-
-
-def main():
-
-    dataset = client.read_dataset(
-        dataset_name=DATASET_NAME,
-    )
-
-    examples = list(
-        client.list_examples(
-            dataset_id=dataset.id,
-        )
-    )
-
-    correctness_scores = []
-    completeness_scores = []
-    relevance_scores = []
-    planning_scores = []
-
-    print(f"\nEvaluating {len(examples)} planner examples...\n")
-
-    for i, example in enumerate(examples, start=1):
-
-        query = example.inputs["user_query"]
-
-        print(f"[{i}/{len(examples)}] {query}")
-
-        generated_plan = run_planner(query)
-
-        correctness = evaluate_correctness(
-            query,
-            generated_plan,
-        )
-
-        completeness = evaluate_completeness(
-            query,
-            generated_plan,
-        )
-
-        relevance = evaluate_relevance(
-            query,
-            generated_plan,
-        )
-
-        planning = evaluate_planning_quality(
-            query,
-            generated_plan,
-        )
-
-        correctness_scores.append(correctness.score)
-        completeness_scores.append(completeness.score)
-        relevance_scores.append(relevance.score)
-        planning_scores.append(planning.score)
-
-        print(f"Correctness      : {correctness.score}/5")
-        print(f"Completeness     : {completeness.score}/5")
-        print(f"Relevance        : {relevance.score}/5")
-        print(f"Planning Quality : {planning.score}/5")
-        print("-" * 60)
-
-    results = pd.DataFrame(
-        {
-            "Correctness": correctness_scores,
-            "Completeness": completeness_scores,
-            "Relevance": relevance_scores,
-            "Planning Quality": planning_scores,
+    
+    # Extract API key for the node
+    api_key = os.environ.get("GROQ_API_KEY") 
+    
+    # 🛠️ Create the mock config that your node requires
+    mock_config = {
+        "configurable": {
+            "thread_id": "eval_run",
+            "api_key": api_key
         }
-    )
-
-    print("\n================ FINAL RESULTS ================\n")
-
-    print(results.mean())
-
-    print("\nOverall Score:",
-          round(results.mean().mean(), 2),
-          "/ 5")
-
-    results.to_csv(
-        "planner_evaluation_results.csv",
-        index=False,
-    )
-
-    print("\nResults saved to planner_evaluation_results.csv")
+    }
+    
+    try:
+        # Import and execute the node
+        from Backend.app.src.agents.planner_node import planner_node
+        
+        # 🛠️ Pass BOTH state and config to the node
+        result_state = planner_node(state, mock_config)
+        generated_plan = result_state.get("plan", "")
+        
+    except Exception as e:
+        generated_plan = f"Node Execution Failed: {str(e)}"
+    
+    return {"generated_plan": generated_plan}
 
 
+
+# ==========================================
+# 3. Execution 
+# ==========================================
 if __name__ == "__main__":
-    main()
+    print("Starting Active 1-5 Scale Evaluation...")
+    
+    experiment_results = evaluate(
+        run_planner, 
+        data="Planner Evaluation", 
+        evaluators=[evaluate_plan_metrics], 
+        experiment_prefix="online-metrics-run"
+    )
+    
+    print("Evaluation complete!")

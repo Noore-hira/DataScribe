@@ -8,7 +8,7 @@ DataScribe is an autonomous, multi-agent data science assistant. Upload a datase
 
 ## ✨ Highlights
 
-- **8-agent LangGraph workflow** — Conversation → Initialize → Supervisor → Planner → Programmer → Executor → Critic → Reporter
+- **6-agent LangGraph workflow** — Conversation agent → Initialize → Supervisor agent → Planner agent → Programmer agent → Executor → Critic agent → Reporter agent
 - **Live SSE streaming** — Every agent step, code snippet, execution output, and report token streams in real time
 - **Secure code execution** — Generated Python runs inside an isolated [E2B](https://e2b.dev) sandbox with AST-based guardrails
 - **Interactive visualizations** — Plotly HTML charts and static PNG charts rendered inline with fullscreen & download support
@@ -27,14 +27,14 @@ DataScribe is an autonomous, multi-agent data science assistant. Upload a datase
 
 | Agent | Role |
 |---|---|
-| **Conversation** | Classifies the user query — routes to the full analysis workflow, answers directly, or rejects |
-| **Initialize** | Loads the uploaded dataset, extracts schema (dtypes, null counts, memory usage) |
-| **Supervisor** | Decides the next high-level action: plan more analysis, generate a report, or end |
-| **Planner** | Breaks the request into analysis, visualization, and statistical tasks with an execution order |
-| **Programmer** | Generates Python code (pandas, matplotlib, seaborn, plotly) to fulfill the plan |
-| **Executor** | Runs the code in an E2B sandbox, collects charts and output, downloads artifacts |
-| **Critic** | Reviews execution results — passes, fails (triggers retry), or aborts |
-| **Reporter** | Assembles the final markdown report with embedded charts and memory updates |
+| **Conversation Agent** | Classifies the user query — routes to the full analysis workflow, answers directly, or rejects |
+| **Initialize Node** | Loads the uploaded dataset, extracts schema (dtypes, null counts, memory usage) |
+| **Supervisor Agent** | Decides the next high-level action: plan more analysis, generate a report, or end |
+| **Planner Agent** | Breaks the request into analysis, visualization, and statistical tasks with an execution order |
+| **Programmer Agent** | Generates Python code (pandas, matplotlib, seaborn, plotly) to fulfill the plan |
+| **Executor Node** | Runs the code in an E2B sandbox, collects charts and output, downloads artifacts |
+| **Critic Agent** | Reviews execution results — passes, fails (triggers retry), or aborts |
+| **Reporter Agent** | Assembles the final markdown report with embedded charts and memory updates |
 
 ---
 
@@ -49,7 +49,7 @@ DataScribe is an autonomous, multi-agent data science assistant. Upload a datase
 - **Node.js 20+**
 - A **Groq API key** ([groq.com](https://console.groq.com))
 - An **E2B API key** ([e2b.dev](https://e2b.dev)) for sandbox code execution
-- A **LangSmith API key** ([smith.langchain.com](https://smith.langchain.com)) for prompt management
+- A **LangSmith API key** ([smith.langchain.com](https://smith.langchain.com)) for prompt management, observability and Evaluation
 
 ### 1. Clone & Install
 
@@ -65,7 +65,7 @@ cd DataScribe
 pip install -r requirements.txt
 
 # Configure environment
-cp Backend/app/src/evaluation/.env .env
+cp .env
 # Edit .env with your Groq, E2B, and LangSmith API keys
 
 # Run the API server
@@ -134,30 +134,65 @@ To set up the CI/CD pipeline, add the following secrets to your GitHub repositor
 | `GET` | `/storage/{path}` | Serve uploaded files |
 | `GET` | `/charts/{path}` | Serve generated chart artifacts |
 
-### Chat Stream Parameters
-
-```
-GET /api/chat/stream?message=What+is+the+trend&thread_id=abc-123&api_key=gsk_...&model=llama-3.3-70b-versatile&dataset_path=/path/to/data.csv
-```
-
----
-
 ## 🧪 Evaluation
 
-DataScribe includes a LangSmith-based evaluation framework for assessing individual agents:
+DataScribe includes a comprehensive **LangSmith-based evaluation framework** that assesses both individual agents and the complete end-to-end workflow. Each evaluation uses an LLM judge (Groq `llama-3.3-70b-versatile`) to score outputs on a **1–5 scale** across multiple metrics, rewarding semantic equivalence rather than exact textual matches.
+
+### Evaluation Scripts
+
+| Script | Agent(s) Evaluated | Dataset | Metrics |
+|---|---|---|---|
+| `evaluate_conversation.py` | Conversation router | `conversation_test.csv` (120 cases) | Route correctness (exact match) |
+| `evaluate_planner.py` | Planner | `planner_dataset.csv` (7 cases) | Correctness, Completeness, Relevance |
+| `evaluate_programmer.py` | Programmer | `programmer_dataset.csv` (7 cases) | Correctness, Executability |
+| `evaluate_workflow.py` | Full 8-agent workflow | `workflow_dataset.csv` (5 cases) | Routing, Planning, Execution, Reporting, Overall |
 
 ```bash
-# Evaluate the conversation router
+# Evaluate the conversation router (120 test cases)
 python evaluation/evaluate_conversation.py
 
-# Evaluate the planner
+# Evaluate the planner (7 test cases)
 python evaluation/evaluate_planner.py
 
-# Evaluate the programmer
+# Evaluate the programmer (7 test cases)
 python evaluation/evaluate_programmer.py
+
+# Evaluate the complete end-to-end workflow (5 test cases)
+python evaluation/evaluate_workflow.py
 ```
 
-Evaluation datasets live in `evaluation/datasets/` and custom evaluators in `evaluation/evaluators/`.
+### How It Works
+
+1. **Datasets** — Each evaluator pulls test cases from a LangSmith dataset. Datasets are also mirrored as CSV files in `evaluation/datasets/` for local inspection and manual upload.
+2. **Target function** — Each script defines a target function that invokes the corresponding agent node (or the full LangGraph `app`) with the dataset inputs, returning the agent's output.
+3. **LLM judge** — A Groq LLM judge, configured with a structured output schema, scores each result against the expected reference on a 1–5 scale. Judges are designed to reward semantically equivalent solutions and ignore wording, formatting, and variable-name differences.
+4. **Results** — LangSmith records per-example scores, comments, and aggregate metrics in the `DataScribe` project, viewable in the LangSmith UI.
+
+### Evaluation Datasets
+
+| Dataset | File | Test Cases | Description |
+|---|---|---|---|
+| Conversation Agent Evaluation | `conversation_test.csv` | 120 | Routes user queries to `answer`, `initialize`, or `reject` across 10 categories (Greeting, Politeness, Identity, Capability, Memory, Analysis, Statistics, Visualization, Advanced, Off-topic) |
+| Planner Evaluation | `planner_dataset.csv` | 7 | Plans for insights, filtering, classification metrics, latency, EDA, correlation heatmaps, and sales analysis |
+| Programmer Evaluation | `programmer_dataset.csv` | 7 | Reference Python code for the same 7 planning tasks |
+| Workflow Evaluation | `workflow_dataset.csv` | 5 | End-to-end workflow runs with expected routes, plan keywords, execution status, chart counts/types, report keywords, critic verdicts, and retry counts |
+
+### Custom Evaluators
+
+Custom evaluators live in `evaluation/evaluators/` and define the scoring logic for each agent:
+
+| Evaluator | File | Metrics |
+|---|---|---|
+| `route_evaluator` | `conversation_evaluators.py` | Exact-match route correctness |
+| `evaluate_plan_metrics` | `planner_evaluators.py` | Correctness, Completeness, Relevance (1–5) |
+| `evaluate_code_metrics` | `programmer_evaluators.py` | Correctness, Executability (1–5) |
+| `evaluate_workflow_metrics` | `workflow_evaluators.py` | Routing, Planning, Execution, Reporting, Overall (1–5) |
+
+### Prerequisites
+
+- A **LangSmith API key** — set `LANGSMITH_API_KEY` in `evaluation/.env`
+- A **Groq API key** — set `GROQ_API_KEY` in `evaluation/.env` (used by the LLM judges)
+- Datasets must be uploaded to LangSmith (or created from the CSV files) with the names referenced in each script (e.g., `Conversation Agent Evaluation`, `Planner Evaluation`, `Programmer Evaluation`, `Workflow Evaluation`)
 
 ---
 
@@ -168,39 +203,39 @@ DataScribe/
 ├── Backend/
 │   ├── main.py                          # FastAPI app entry point
 │   ├── app/
-│   │   ├── api/                         # REST + SSE endpoints
-│   │   │   ├── chat.py                  # SSE streaming endpoint
-│   │   │   ├── upload.py                # Dataset upload
-│   │   │   ├── health.py                # Health check
-│   │   │   ├── report.py                # Report download
-│   │   │   └── session.py               # Session cleanup
-│   │   ├── services/
-│   │   │   ├── graph_service.py         # LangGraph execution runner
-│   │   │   └── stream_service.py        # SSE event processing & heartbeat
-│   │   └── src/
-│   │       ├── config.py                # LLM factory (Groq, per-user key)
-│   │       ├── data_frame.py            # Dataset loading (CSV/Excel/Parquet)
-│   │       ├── agents/                  # 8 LangGraph agent nodes
-│   │       │   ├── conversation_node.py
-│   │       │   ├── initialize_node.py
-│   │       │   ├── supervisor_node.py
-│   │       │   ├── planner_node.py
-│   │       │   ├── programmer_node.py
-│   │       │   ├── executor_node.py
-│   │       │   ├── critic_node.py
-│   │       │   └── reporter_node.py
-│   │       ├── graph/
-│   │       │   ├── graph_workflow.py    # Workflow definition & routing
-│   │       │   ├── state.py             # TypedDict state schema
-│   │       │   └── state_utils.py       # State accessors
-│   │       ├── memory/
-│   │       │   └── memory_manager.py    # Session summary & compression
-│   │       ├── utils/
-│   │       │   ├── code_executor.py     # Code extraction & execution
-│   │       │   └── safe_execution.py    # AST-based code guardrails
-│   │       └── logs/
-│   │           └── logger.py            # Structured logging
-│   └── storage/                         # Uploaded datasets & reports
+│      ├── api/                         # REST + SSE endpoints
+│      │   ├── chat.py                  # SSE streaming endpoint
+│      │   ├── upload.py                # Dataset upload
+│      │   ├── health.py                # Health check
+│      │   ├── report.py                # Report download
+│      │   └── session.py               # Session cleanup
+│      ├── services/
+│      │   ├── graph_service.py         # LangGraph execution runner
+│      │   └── stream_service.py        # SSE event processing & heartbeat
+│      └── src/
+│          ├── config.py                # LLM factory (Groq, per-user key)
+│          ├── data_frame.py            # Dataset loading (CSV/Excel/Parquet)
+│          ├── agents/                  # 8 LangGraph agent nodes
+│          │   ├── conversation_node.py
+│          │   ├── initialize_node.py
+│          │   ├── supervisor_node.py
+│          │   ├── planner_node.py
+│          │   ├── programmer_node.py
+│          │   ├── executor_node.py
+│          │   ├── critic_node.py
+│          │   └── reporter_node.py
+│          ├── graph/
+│          │   ├── graph_workflow.py    # Workflow definition & routing
+│          │   ├── state.py             # TypedDict state schema
+│          │   └── state_utils.py       # State accessors
+│          ├── memory/
+│          │   └── memory_manager.py    # Session summary & compression
+│          ├── utils/
+│          │   ├── code_executor.py     # Code extraction & execution
+│          │   └── safe_execution.py    # AST-based code guardrails
+│          └── logs/
+│              └── logger.py            # Structured logging
+│ 
 ├── frontend/
 │   ├── src/
 │   │   ├── App.tsx                      # Root component (routes, providers)
@@ -222,17 +257,25 @@ DataScribe/
 │   │   └── lib/                         # Utility functions
 │   └── public/
 ├── evaluation/                          # LangSmith evaluation framework
-│   ├── evaluate_conversation.py
-│   ├── evaluate_planner.py
-│   ├── evaluate_programmer.py
-│   ├── judge.py
-│   ├── upload_dataset.py
-│   ├── evaluators/
-│   └── datasets/
+│   ├── evaluate_conversation.py         # Conversation router evaluation
+│   ├── evaluate_planner.py              # Planner evaluation
+│   ├── evaluate_programmer.py           # Programmer evaluation
+│   ├── evaluate_workflow.py             # End-to-end workflow evaluation
+│   ├── evaluators/                      # Custom LangSmith evaluators
+│   │   ├── conversation_evaluators.py
+│   │   ├── planner_evaluators.py
+│   │   ├── programmer_evaluators.py
+│   │   └── workflow_evaluators.py
+│   └── datasets/                        # Evaluation test-case CSVs
+│       ├── conversation_test.csv
+│       ├── planner_dataset.csv
+│       ├── programmer_dataset.csv
+│       └── workflow_dataset.csv
 ├── Dockerfile
 ├── langgraph.json
 ├── pyproject.toml
 ├── requirements.txt
+├── .env
 └── workflow_diagram.png
 ```
 
@@ -248,7 +291,7 @@ DataScribe/
 | `E2B_API_KEY` | E2B sandbox API key for code execution |
 | `LANGSMITH_API_KEY` | LangSmith API key for prompt management & tracing |
 | `LANGSMITH_PROJECT` | LangSmith project name (default: `DataScribe`) |
-| `LANGGRAPH_ARTIFACTS_DIR` | Directory for chart artifacts (default: `/tmp/charts`) |
+| `LANGSMITH_TRACING_V2` | Enable LangSmith V2 tracing (true to enable) |
 
 ### Supported LLM Models
 
